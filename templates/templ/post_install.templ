@@ -19,13 +19,7 @@ templ PostInstall(
     owner *user_model.User,
 ) {
     @Page(gCtx, locale, title, repository, appName, signedUser, owner) {
-        <div
-            role="main" 
-            if title != nil {
-                aria-label={*title}
-            }
-            class="page-content install post-install tw-h-full"
-        >
+        @PageContent(title, "install post-install tw-h-full") {
             <div class="home tw-text-center tw-h-full tw-flex tw-flex-col tw-justify-center">
                 <div class="tw-ml-[-30px]">
                     <img width="160" src={templ.URL(assetUrlPrefix + "/img/loading.png")} alt="" aria-hidden="true" />
@@ -36,6 +30,6 @@ templ PostInstall(
                     </a>
                 </div>
             </div>
-        </div>
+        }
     }
 }

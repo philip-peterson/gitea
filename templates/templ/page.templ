@@ -25,6 +25,7 @@ templ Page(
     {{ manifestData, _ := gCtx.Data["ManifestData"].(string) }}
     {{ enableFeed, _ := gCtx.Data["EnableFeed"].(bool) }}
     {{ feedURL, _ := gCtx.Data["FeedURL"].(string) }}
+    {{ pageIsInstall, _ := gCtx.Data["PageIsInstall"].(bool) }}
 
     <!DOCTYPE html>
     <html lang={locale.Language()} data-theme={templates.UserThemeName(signedUser)}>
@@ -72,11 +73,11 @@ templ Page(
             <div class="full height">
                 <noscript>{locale.Tr("enable_javascript")}</noscript>
 
-                //    {{if not .PageIsInstall}}
-                //        {{template "base/head_navbar" .}}
-                //    {{end}}
+                if !pageIsInstall {
+                    @partial(gCtx, "base/head_navbar")
+                }
 
-                { children... }
+                {children...}
             </div>
 
             @partial(gCtx, "base/footer_content")
