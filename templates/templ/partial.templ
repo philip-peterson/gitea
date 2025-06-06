@@ -1,0 +1,23 @@
+package templ
+
+import (
+	"code.gitea.io/gitea/modules/templates"
+    giteaCtx "code.gitea.io/gitea/services/context"
+)
+
+templ partial(gCtx *giteaCtx.Context, templateName string) {
+    {{
+        var output string
+    }}
+    {renderOrError(gCtx, templateName, &output)}
+    @templ.Raw(output)
+}
+
+func renderOrError(gCtx *giteaCtx.Context, templateName string, output *string) (string, error) {
+    maybeOutput, err := gCtx.HTMLPartial(200, templates.TplName(templateName))
+    if err != nil {
+        return "", err
+    }
+    *output = maybeOutput
+    return "", nil
+}
