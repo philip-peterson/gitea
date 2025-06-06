@@ -56,22 +56,12 @@ templ wrapHeaderFooter(
     owner *user_model.User,
 ) {
     {{ manifestData, _ := gCtx.Data["ManifestData"].(string) }}
-    {{ goGetImport, _ := gCtx.Data["GoGetImport"].(string) }}
-    {{ repoCloneLink, _ := gCtx.Data["RepoCloneLink"].(*repo_model.CloneLink) }}
-    {{ goDocDirectory, _ := gCtx.Data["GoDocDirectory"].(string) }}
-    {{ goDocFile, _ := gCtx.Data["GoDocFile"].(string) }}
     {{ enableFeed, _ := gCtx.Data["EnableFeed"].(bool) }}
     {{ feedURL, _ := gCtx.Data["FeedURL"].(string) }}
-    {{ csrfToken, _ := gCtx.Data["CsrfToken"].(string) }}
-
-    {{ metaAuthor := setting.UI.Meta.Author }}
-    {{ metaDescription := setting.UI.Meta.Description }}
-    {{ metaKeywords := setting.UI.Meta.Keywords }}
 
     <!DOCTYPE html>
     <html lang={locale.Language()} data-theme={templates.UserThemeName(signedUser)}>
     <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>
             if title != nil {
                 {*title}{ ` - ` }
@@ -86,45 +76,7 @@ templ wrapHeaderFooter(
             <link rel="manifest" href={ "data:" + manifestData } />
         }
 
-        <meta name="author"
-            if repository != nil {
-                content={owner.Name}
-            } else {
-                content={metaAuthor}
-            }
-        />
-
-        {{
-            description := ""
-            if repository != nil {
-                description += repository.Name
-                if repository.Description != "" {
-                    description += " - "
-                    description += repository.Description
-                }
-            } else {
-                description += metaDescription
-            }
-        }}
-
-        <meta name="description" content={description} />
-        <meta name="keywords" content={metaKeywords} />
-        <meta name="referrer" content="no-referrer" />
-        
-        if goGetImport != "" {
-            {{ var https string}}
-            if repoCloneLink != nil {
-                {{ https = repoCloneLink.HTTPS }}
-            }
-            <meta
-                name="go-import"
-                content={ goGetImport + " git " + https }
-            />
-            <meta
-                name="go-source"
-                content={ goGetImport + " _ " + goDocDirectory + " " + goDocFile + " " }
-            />
-        }
+        @meta(gCtx, repository, owner) {}
 
         if enableFeed && feedURL != "" {
             <link
@@ -147,10 +99,7 @@ templ wrapHeaderFooter(
     //    {{template "base/head_opengraph" .}}
     //    {{template "base/head_style" .}}
     </head>
-    <body
-        hx-headers={ fmt.Sprintf(`{"x-csrf-token": "%s"}`, strconv.Quote(csrfToken)) }
-        hx-swap="outerHTML" hx-ext="morph" hx-push-url="false"
-    >
+    @body(gCtx) {
        <div class="full height">
            <noscript>{locale.Tr("enable_javascript")}</noscript>
 
@@ -161,13 +110,76 @@ templ wrapHeaderFooter(
            { children... }
         </div>
 
-	// {{template "base/footer_content" .}}
+        // {{template "base/footer_content" .}}
 
-	<script
-        src={templ.URL(templates.AssetUrlPrefix() + "/js/index.js?v=" + url.QueryEscape(setting.AssetVersion))}
-        onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"
-    ></script>
-    </body>
+        <script
+            src={templ.URL(
+                templates.AssetUrlPrefix() +
+                "/js/index.js?v=" +
+                url.QueryEscape(setting.AssetVersion),
+            )}
+            onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"
+        ></script>
+    }
     </html>
 }
 
+templ body(gCtx *giteaCtx.Context) {
+    {{ csrfToken, _ := gCtx.Data["CsrfToken"].(string) }}
+
+    <body
+        hx-headers={ fmt.Sprintf(`{"x-csrf-token": "%s"}`, strconv.Quote(csrfToken)) }
+        hx-swap="outerHTML" hx-ext="morph" hx-push-url="false"
+    >
+        {children...}
+    </body>
+}
+
+
+templ meta(gCtx *giteaCtx.Context, repository *repo_model.Repository, owner *user_model.User) {
+
+    {{ goGetImport, _ := gCtx.Data["GoGetImport"].(string) }}
+    {{ repoCloneLink, _ := gCtx.Data["RepoCloneLink"].(*repo_model.CloneLink) }}
+    {{ goDocDirectory, _ := gCtx.Data["GoDocDirectory"].(string) }}
+    {{ goDocFile, _ := gCtx.Data["GoDocFile"].(string) }}
+
+    {{ metaAuthor := setting.UI.Meta.Author }}
+    {{ metaDescription := setting.UI.Meta.Description }}
+    {{ metaKeywords := setting.UI.Meta.Keywords }}
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <meta name="author"
+        if repository != nil {
+            content={owner.Name}
+        } else {
+            content={metaAuthor}
+        }
+    />
+
+    {{
+        description := ""
+        if repository != nil {
+            description += repository.Name
+            if repository.Description != "" {
+                description += " - "
+                description += repository.Description
+            }
+        } else {
+            description += metaDescription
+        }
+    }}
+
+    <meta name="description" content={description} />
+    <meta name="keywords" content={metaKeywords} />
+    <meta name="referrer" content="no-referrer" />
+    
+    if goGetImport != "" {
+        {{ var https string}}
+        if repoCloneLink != nil {
+            {{ https = repoCloneLink.HTTPS }}
+        }
+        <meta name="go-import" content={goGetImport + " git " + https} />
+        <meta name="go-source" content={goGetImport + " _ " + goDocDirectory + " " + goDocFile + " "} />
+    }
+}
