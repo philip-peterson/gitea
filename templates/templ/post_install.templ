@@ -146,26 +146,19 @@ templ wrapHeaderFooter(
     //    {{template "base/head_script" .}}
     //    {{template "base/head_opengraph" .}}
     //    {{template "base/head_style" .}}
-    //    {{template "custom/header" .}}
     </head>
     <body
         hx-headers={ fmt.Sprintf(`{"x-csrf-token": "%s"}`, strconv.Quote(csrfToken)) }
         hx-swap="outerHTML" hx-ext="morph" hx-push-url="false"
     >
-    //    {{template "custom/body_outer_pre" .}}
-
        <div class="full height">
            <noscript>{locale.Tr("enable_javascript")}</noscript>
-
-        //    {{template "custom/body_inner_pre" .}}
 
         //    {{if not .PageIsInstall}}
         //        {{template "base/head_navbar" .}}
         //    {{end}}
 
            { children... }
-
-        //    {{template "custom/body_inner_post" .}}
         </div>
 
 	// {{template "base/footer_content" .}}
