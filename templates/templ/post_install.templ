@@ -1,6 +1,10 @@
 package templ
 
 import (
+    "strconv"
+    "fmt"
+    "net/url"
+
 	"code.gitea.io/gitea/modules/translation"
 	repo_model "code.gitea.io/gitea/models/repo"
 	user_model "code.gitea.io/gitea/models/user"
@@ -58,6 +62,7 @@ templ wrapHeaderFooter(
     {{ goDocFile, _ := gCtx.Data["GoDocFile"].(string) }}
     {{ enableFeed, _ := gCtx.Data["EnableFeed"].(bool) }}
     {{ feedURL, _ := gCtx.Data["FeedURL"].(string) }}
+    {{ csrfToken, _ := gCtx.Data["CsrfToken"].(string) }}
 
     {{ metaAuthor := setting.UI.Meta.Author }}
     {{ metaDescription := setting.UI.Meta.Description }}
@@ -143,11 +148,14 @@ templ wrapHeaderFooter(
     //    {{template "base/head_style" .}}
     //    {{template "custom/header" .}}
     </head>
-    <body hx-headers='{"x-csrf-token": "{{.CsrfToken}}"}' hx-swap="outerHTML" hx-ext="morph" hx-push-url="false">
+    <body
+        hx-headers={ fmt.Sprintf(`{"x-csrf-token": "%s"}`, strconv.Quote(csrfToken)) }
+        hx-swap="outerHTML" hx-ext="morph" hx-push-url="false"
+    >
     //    {{template "custom/body_outer_pre" .}}
 
        <div class="full height">
-        //    <noscript>{{ctx.Locale.Tr "enable_javascript"}}</noscript>
+           <noscript>{locale.Tr("enable_javascript")}</noscript>
 
         //    {{template "custom/body_inner_pre" .}}
 
@@ -162,7 +170,10 @@ templ wrapHeaderFooter(
 
 	// {{template "base/footer_content" .}}
 
-	// <script src="{{AssetUrlPrefix}}/js/index.js?v={{AssetVersion}}" onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"></script>
+	<script
+        src={templ.URL(templates.AssetUrlPrefix() + "/js/index.js?v=" + url.QueryEscape(setting.AssetVersion))}
+        onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"
+    ></script>
     </body>
     </html>
 }
