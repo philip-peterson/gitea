@@ -22,6 +22,8 @@ import (
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/templates"
 	"code.gitea.io/gitea/modules/web/middleware"
+
+	"github.com/a-h/templ"
 )
 
 // RedirectToUser redirect to a differently-named user
@@ -187,4 +189,14 @@ func (ctx *Context) NotFoundOrServerError(logMsg string, errCheck func(error) bo
 		return
 	}
 	ctx.serverErrorInternal(logMsg, logErr)
+}
+
+func (b *Context) Templ(t templ.Component) {
+	h := templ.Handler(t, templ.WithErrorHandler(func(r *http.Request, err error) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b.ServerError(err.Error(), err)
+		})
+
+	}))
+	h.ServeHTTP(b.Resp, b.Req)
 }

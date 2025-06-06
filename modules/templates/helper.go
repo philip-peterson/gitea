@@ -25,6 +25,10 @@ import (
 	"code.gitea.io/gitea/services/webtheme"
 )
 
+func AssetUrlPrefix() string {
+	return setting.StaticURLPrefix + "/assets"
+}
+
 // NewFuncMap returns functions for injecting to templates
 func NewFuncMap() template.FuncMap {
 	return map[string]any{
@@ -85,9 +89,7 @@ func NewFuncMap() template.FuncMap {
 		"AppSubUrl": func() string {
 			return setting.AppSubURL
 		},
-		"AssetUrlPrefix": func() string {
-			return setting.StaticURLPrefix + "/assets"
-		},
+		"AssetUrlPrefix": AssetUrlPrefix,
 		"AppUrl": func() string {
 			// The usage of AppUrl should be avoided as much as possible,
 			// because the AppURL(ROOT_URL) may not match user's visiting site and the ROOT_URL in app.ini may be incorrect.
@@ -134,7 +136,7 @@ func NewFuncMap() template.FuncMap {
 		"DisableWebhooks": func() bool {
 			return setting.DisableWebhooks
 		},
-		"UserThemeName": userThemeName,
+		"UserThemeName": UserThemeName,
 		"NotificationSettings": func() map[string]any {
 			return map[string]any{
 				"MinTimeout":            int(setting.UI.Notification.MinTimeout / time.Millisecond),
@@ -246,7 +248,7 @@ func evalTokens(tokens ...any) (any, error) {
 	return n.Value, err
 }
 
-func userThemeName(user *user_model.User) string {
+func UserThemeName(user *user_model.User) string {
 	if user == nil || user.Theme == "" {
 		return setting.UI.DefaultTheme
 	}

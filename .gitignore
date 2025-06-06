@@ -113,3 +113,6 @@ prime/
 
 # Manpage
 /man
+
+# a-h/templ files
+templates/templ/**/*_templ.go

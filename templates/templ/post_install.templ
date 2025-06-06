@@ -1,0 +1,169 @@
+package templ
+
+import (
+	"code.gitea.io/gitea/modules/translation"
+	repo_model "code.gitea.io/gitea/models/repo"
+	user_model "code.gitea.io/gitea/models/user"
+	"code.gitea.io/gitea/modules/templates"
+    giteaCtx "code.gitea.io/gitea/services/context"
+    "code.gitea.io/gitea/modules/setting"
+)
+
+templ PostInstall(
+    gCtx *giteaCtx.Context,
+    title *string,
+    assetUrlPrefix string,
+    appSubUrl string,
+    locale translation.Locale,
+    repository *repo_model.Repository,
+    appName string,
+    signedUser *user_model.User,
+    owner *user_model.User,
+) {
+    @wrapHeaderFooter(gCtx, locale, title, repository, appName, signedUser, owner) {
+        <div
+            role="main" 
+            if title != nil {
+                aria-label={*title}
+            }
+            class="page-content install post-install tw-h-full"
+        >
+            <div class="home tw-text-center tw-h-full tw-flex tw-flex-col tw-justify-center">
+                <div class="tw-ml-[-30px]">
+                    <img width="160" src={templ.URL(assetUrlPrefix + "/img/loading.png")} alt="" aria-hidden="true" />
+                </div>
+                <div class="tw-my-[2em] tw-text-[18px]">
+                    <a id="goto-user-login" href={templ.URL(appSubUrl + "/user/login")}>
+                        {locale.Tr("install.installing_desc")}
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+templ wrapHeaderFooter(
+    gCtx *giteaCtx.Context,
+    locale translation.Locale,
+    title *string,
+    repository *repo_model.Repository,
+    appName string,
+    signedUser *user_model.User,
+    owner *user_model.User,
+) {
+    {{ manifestData, _ := gCtx.Data["ManifestData"].(string) }}
+    {{ goGetImport, _ := gCtx.Data["GoGetImport"].(string) }}
+    {{ repoCloneLink, _ := gCtx.Data["RepoCloneLink"].(*repo_model.CloneLink) }}
+    {{ goDocDirectory, _ := gCtx.Data["GoDocDirectory"].(string) }}
+    {{ goDocFile, _ := gCtx.Data["GoDocFile"].(string) }}
+    {{ enableFeed, _ := gCtx.Data["EnableFeed"].(bool) }}
+    {{ feedURL, _ := gCtx.Data["FeedURL"].(string) }}
+
+    {{ metaAuthor := setting.UI.Meta.Author }}
+    {{ metaDescription := setting.UI.Meta.Description }}
+    {{ metaKeywords := setting.UI.Meta.Keywords }}
+
+    <!DOCTYPE html>
+    <html lang={locale.Language()} data-theme={templates.UserThemeName(signedUser)}>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>
+            if title != nil {
+                {*title}{ ` - ` }
+            }
+            if repository != nil && repository.Name != "" {
+                {repository.Name}{ ` - ` }
+            }
+            {appName}
+        </title>
+
+        if manifestData != "" {
+            <link rel="manifest" href={ "data:" + manifestData } />
+        }
+
+        <meta name="author"
+            if repository != nil {
+                content={owner.Name}
+            } else {
+                content={metaAuthor}
+            }
+        />
+
+        {{
+            description := ""
+            if repository != nil {
+                description += repository.Name
+                if repository.Description != "" {
+                    description += " - "
+                    description += repository.Description
+                }
+            } else {
+                description += metaDescription
+            }
+        }}
+
+        <meta name="description" content={description} />
+        <meta name="keywords" content={metaKeywords} />
+        <meta name="referrer" content="no-referrer" />
+        
+        if goGetImport != "" {
+            {{ var https string}}
+            if repoCloneLink != nil {
+                {{ https = repoCloneLink.HTTPS }}
+            }
+            <meta
+                name="go-import"
+                content={ goGetImport + " git " + https }
+            />
+            <meta
+                name="go-source"
+                content={ goGetImport + " _ " + goDocDirectory + " " + goDocFile + " " }
+            />
+        }
+
+        if enableFeed && feedURL != "" {
+            <link
+                rel="alternate"
+                type="application/atom+xml"
+                title=""
+                href={ feedURL + ".atom" }
+            />
+            <link
+                rel="alternate"
+                type="application/rss+xml"
+                title=""
+                href={ feedURL + ".rss" }
+            />
+        }
+
+       <link rel="icon" href={ templates.AssetUrlPrefix() + "/img/favicon.svg" } type="image/svg+xml" />
+       <link rel="alternate icon" href={ templates.AssetUrlPrefix()  + "/img/favicon.png" } type="image/png" />
+    //    {{template "base/head_script" .}}
+    //    {{template "base/head_opengraph" .}}
+    //    {{template "base/head_style" .}}
+    //    {{template "custom/header" .}}
+    </head>
+    <body hx-headers='{"x-csrf-token": "{{.CsrfToken}}"}' hx-swap="outerHTML" hx-ext="morph" hx-push-url="false">
+    //    {{template "custom/body_outer_pre" .}}
+
+       <div class="full height">
+        //    <noscript>{{ctx.Locale.Tr "enable_javascript"}}</noscript>
+
+        //    {{template "custom/body_inner_pre" .}}
+
+        //    {{if not .PageIsInstall}}
+        //        {{template "base/head_navbar" .}}
+        //    {{end}}
+
+           { children... }
+
+        //    {{template "custom/body_inner_post" .}}
+        </div>
+
+	// {{template "base/footer_content" .}}
+
+	// <script src="{{AssetUrlPrefix}}/js/index.js?v={{AssetVersion}}" onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"></script>
+    </body>
+    </html>
+}
+

@@ -8,7 +8,7 @@ bin = "gitea"
 delay = 2000
 include_ext = ["go", "tmpl"]
 include_file = ["main.go"]
-include_dir = ["cmd", "models", "modules", "options", "routers", "services"]
+include_dir = ["cmd", "models", "modules", "options", "routers", "services", "templates/templ"]
 exclude_dir = [
   "models/fixtures",
   "models/migrations/fixtures",
@@ -24,3 +24,7 @@ stop_on_error = true
 
 [log]
 main_only = true
+
+
+[misc]
+clean_on_exit = true

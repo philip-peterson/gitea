@@ -26,6 +26,7 @@ COMMA := ,
 XGO_VERSION := go-1.24.x
 
 AIR_PACKAGE ?= github.com/air-verse/air@v1
+TEMPL_PACKAGE ?= github.com/a-h/templ/cmd/templ@v0.3.894
 EDITORCONFIG_CHECKER_PACKAGE ?= github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker@v3.2.1
 GOFUMPT_PACKAGE ?= mvdan.cc/gofumpt@v0.7.0
 GOLANGCI_LINT_PACKAGE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.2
@@ -115,6 +116,8 @@ LINUX_ARCHS ?= linux/amd64,linux/386,linux/arm-5,linux/arm-6,linux/arm64,linux/r
 GO_TEST_PACKAGES ?= $(filter-out $(shell $(GO) list code.gitea.io/gitea/models/migrations/...) code.gitea.io/gitea/tests/integration/migration-test code.gitea.io/gitea/tests code.gitea.io/gitea/tests/integration code.gitea.io/gitea/tests/e2e,$(shell $(GO) list ./... | grep -v /vendor/))
 MIGRATE_TEST_PACKAGES ?= $(shell $(GO) list code.gitea.io/gitea/models/migrations/...)
 
+TEMPL_SOURCES := $(shell find templates/templ -type f -name "*.templ")
+
 WEBPACK_SOURCES := $(shell find web_src/js web_src/css -type f)
 WEBPACK_CONFIGS := webpack.config.js tailwind.config.js
 WEBPACK_DEST := public/assets/js/index.js public/assets/css/index.css
@@ -140,7 +143,7 @@ TEST_TAGS ?= $(TAGS_SPLIT) sqlite sqlite_unlock_notify
 
 TAR_EXCLUDES := .git data indexers queues log node_modules $(EXECUTABLE) $(DIST) $(MAKE_EVIDENCE_DIR) $(AIR_TMP_DIR) $(GO_LICENSE_TMP_DIR)
 
-GO_DIRS := build cmd models modules routers services tests
+GO_DIRS := build cmd models modules routers services tests templates/templ
 WEB_DIRS := web_src/js web_src/css
 
 ESLINT_FILES := web_src/js tools *.js *.ts *.cjs tests/e2e
@@ -403,8 +406,23 @@ watch-frontend: node-check node_modules ## watch frontend files and continuously
 	NODE_ENV=development npx webpack --watch --progress
 
 .PHONY: watch-backend
-watch-backend: go-check ## watch backend files and continuously rebuild
-	GITEA_RUN_MODE=dev $(GO) run $(AIR_PACKAGE) -c .air.toml
+watch-backend: backend templ-watch ## watch backend files and continuously rebuild
+
+.PHONY: templ
+templ: $(TEMPL_SOURCES)
+	$(GO) run $(TEMPL_PACKAGE) generate \
+		--path=templates/templ \
+		--open-browser=false \
+		--cmd='../../tools/templ-entrypoint.sh'
+
+.PHONY: templ-watch
+templ-watch: $(TEMPL_SOURCES)
+	$(GO) run $(TEMPL_PACKAGE) generate \
+		--path=templates/templ \
+		--watch \
+		--open-browser=true \
+		--proxy="http://localhost:3000" \
+		--cmd='../../tools/templ-entrypoint.sh' -v
 
 .PHONY: test
 test: test-frontend test-backend ## test everything
@@ -721,14 +739,14 @@ build: frontend backend ## build everything
 frontend: $(WEBPACK_DEST) ## build frontend files
 
 .PHONY: backend
-backend: go-check generate-backend $(EXECUTABLE) ## build backend files
+backend: go-check templ generate-backend $(EXECUTABLE) ## build backend files
 
 # We generate the backend before the frontend in case we in future we want to generate things in the frontend from generated files in backend
 .PHONY: generate
 generate: generate-backend ## run "go generate"
 
 .PHONY: generate-backend
-generate-backend: $(TAGS_PREREQ) generate-go
+generate-backend: $(TAGS_PREREQ) generate-go templ
 
 .PHONY: generate-go
 generate-go: $(TAGS_PREREQ)
@@ -805,6 +823,7 @@ deps-backend: ## install backend dependencies
 .PHONY: deps-tools
 deps-tools: ## install tool dependencies
 	$(GO) install $(AIR_PACKAGE) & \
+	$(GO) install $(TEMPL_PACKAGE) & \
 	$(GO) install $(EDITORCONFIG_CHECKER_PACKAGE) & \
 	$(GO) install $(GOFUMPT_PACKAGE) & \
 	$(GO) install $(GOLANGCI_LINT_PACKAGE) & \

@@ -16,6 +16,7 @@ import (
 
 	"code.gitea.io/gitea/models/db"
 	db_install "code.gitea.io/gitea/models/db/install"
+	repo_model "code.gitea.io/gitea/models/repo"
 	system_model "code.gitea.io/gitea/models/system"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/auth/password/hash"
@@ -36,6 +37,7 @@ import (
 	"code.gitea.io/gitea/services/context"
 	"code.gitea.io/gitea/services/forms"
 	"code.gitea.io/gitea/services/versioned_migration"
+	t "code.gitea.io/gitea/templates/templ"
 
 	"gitea.com/go-chi/session"
 )
@@ -607,5 +609,22 @@ func SubmitInstall(ctx *context.Context) {
 // InstallDone shows the "post-install" page, makes it easier to develop the page.
 // The name is not called as "PostInstall" to avoid misinterpretation as a handler for "POST /install"
 func InstallDone(ctx *context.Context) { //nolint
-	ctx.HTML(http.StatusOK, tplPostInstall)
+	assetUrlPrefix := setting.StaticURLPrefix + "/assets"
+
+	title, _ := ctx.Data["Title"].(string)
+	signedUser, _ := ctx.Data[middleware.ContextDataKeySignedUser].(*user_model.User)
+	repo, _ := ctx.Data["Repo"].(*repo_model.Repository)
+	owner, _ := ctx.Data["Owner"].(*user_model.User)
+
+	ctx.Templ(t.PostInstall(
+		ctx,
+		&title,
+		assetUrlPrefix,
+		setting.AppSubURL,
+		ctx.Locale,
+		repo,
+		setting.AppName,
+		signedUser,
+		owner,
+	))
 }

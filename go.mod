@@ -27,6 +27,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.2.0
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.7.3
+	github.com/a-h/templ v0.3.894
 	github.com/alecthomas/chroma/v2 v2.17.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.67
 	github.com/aws/aws-sdk-go-v2/service/codecommit v1.28.2
