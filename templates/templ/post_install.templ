@@ -18,7 +18,7 @@ templ PostInstall(
     signedUser *user_model.User,
     owner *user_model.User,
 ) {
-    @wrapHeaderFooter(gCtx, locale, title, repository, appName, signedUser, owner) {
+    @Page(gCtx, locale, title, repository, appName, signedUser, owner) {
         <div
             role="main" 
             if title != nil {
