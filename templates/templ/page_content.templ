@@ -1,20 +1,20 @@
 package templ
 
 templ PageContent(title *string, extraClasses string) {
-    {{
-        classes := "page-content"
-        if extraClasses != "" {
-            classes += " " + extraClasses
-        }
-    }}
+	{{
+		classes := "page-content"
+		if extraClasses != "" {
+			classes += " " + extraClasses
+		}
+	}}
 
-    <div
-        role="main" 
-        if title != nil {
-            aria-label={*title}
-        }
-        class={classes}
-    >
-        {children...}
-    </div>
+	<div
+		role="main" 
+		if title != nil {
+			aria-label={*title}
+		}
+		class={classes}
+	>
+		{children...}
+	</div>
 }

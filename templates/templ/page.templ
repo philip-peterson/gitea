@@ -1,154 +1,154 @@
 package templ
 
 import (
-    "fmt"
-    "strconv"
-    "net/url"
+	"fmt"
+	"strconv"
+	"net/url"
 
 	"code.gitea.io/gitea/modules/translation"
 	repo_model "code.gitea.io/gitea/models/repo"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/templates"
-    giteaCtx "code.gitea.io/gitea/services/context"
-    "code.gitea.io/gitea/modules/setting"
+	giteaCtx "code.gitea.io/gitea/services/context"
+	"code.gitea.io/gitea/modules/setting"
 )
 
 templ Page(
-    gCtx *giteaCtx.Context,
-    locale translation.Locale,
-    title *string,
-    repository *repo_model.Repository,
-    appName string,
-    signedUser *user_model.User,
-    owner *user_model.User,
+	gCtx *giteaCtx.Context,
+	locale translation.Locale,
+	title *string,
+	repository *repo_model.Repository,
+	appName string,
+	signedUser *user_model.User,
+	owner *user_model.User,
 ) {
-    {{ manifestData, _ := gCtx.Data["ManifestData"].(string) }}
-    {{ enableFeed, _ := gCtx.Data["EnableFeed"].(bool) }}
-    {{ feedURL, _ := gCtx.Data["FeedURL"].(string) }}
-    {{ pageIsInstall, _ := gCtx.Data["PageIsInstall"].(bool) }}
+	{{ manifestData, _ := gCtx.Data["ManifestData"].(string) }}
+	{{ enableFeed, _ := gCtx.Data["EnableFeed"].(bool) }}
+	{{ feedURL, _ := gCtx.Data["FeedURL"].(string) }}
+	{{ pageIsInstall, _ := gCtx.Data["PageIsInstall"].(bool) }}
 
-    <!DOCTYPE html>
-    <html lang={locale.Language()} data-theme={templates.UserThemeName(signedUser)}>
-        <head>
-            <title>
-                if title != nil {
-                    {*title}{ ` - ` }
-                }
-                if repository != nil && repository.Name != "" {
-                    {repository.Name}{ ` - ` }
-                }
-                {appName}
-            </title>
+	<!DOCTYPE html>
+	<html lang={locale.Language()} data-theme={templates.UserThemeName(signedUser)}>
+	<head>
+		<title>
+		if title != nil {
+			{*title}{ ` - ` }
+		}
+		if repository != nil && repository.Name != "" {
+			{repository.Name}{ ` - ` }
+		}
+		{appName}
+		</title>
 
-            if manifestData != "" {
-                <link rel="manifest" href={ "data:" + manifestData } />
-            }
+		if manifestData != "" {
+		<link rel="manifest" href={ "data:" + manifestData } />
+		}
 
-            @meta(gCtx, repository, owner)
+		@meta(gCtx, repository, owner)
 
-            if enableFeed && feedURL != "" {
-                <link
-                    rel="alternate"
-                    type="application/atom+xml"
-                    title=""
-                    href={ feedURL + ".atom" }
-                />
-                <link
-                    rel="alternate"
-                    type="application/rss+xml"
-                    title=""
-                    href={ feedURL + ".rss" }
-                />
-            }
+		if enableFeed && feedURL != "" {
+		<link
+			rel="alternate"
+			type="application/atom+xml"
+			title=""
+			href={ feedURL + ".atom" }
+		/>
+		<link
+			rel="alternate"
+			type="application/rss+xml"
+			title=""
+			href={ feedURL + ".rss" }
+		/>
+		}
 
-            <link rel="icon" href={ templates.AssetUrlPrefix() + "/img/favicon.svg" } type="image/svg+xml" />
-            <link rel="alternate icon" href={ templates.AssetUrlPrefix()  + "/img/favicon.png" } type="image/png" />
+		<link rel="icon" href={ templates.AssetUrlPrefix() + "/img/favicon.svg" } type="image/svg+xml" />
+		<link rel="alternate icon" href={ templates.AssetUrlPrefix()  + "/img/favicon.png" } type="image/png" />
 
-            @partial(gCtx, "base/head_script")
-            @partial(gCtx, "base/head_opengraph")
-            @partial(gCtx, "base/head_style")
-        </head>
+		@partial(gCtx, "base/head_script")
+		@partial(gCtx, "base/head_opengraph")
+		@partial(gCtx, "base/head_style")
+	</head>
 
-        @body(gCtx) {
-            <div class="full height">
-                <noscript>{locale.Tr("enable_javascript")}</noscript>
+	@body(gCtx) {
+		<div class="full height">
+		<noscript>{locale.Tr("enable_javascript")}</noscript>
 
-                if !pageIsInstall {
-                    @partial(gCtx, "base/head_navbar")
-                }
+		if !pageIsInstall {
+			@partial(gCtx, "base/head_navbar")
+		}
 
-                {children...}
-            </div>
+		{children...}
+		</div>
 
-            @partial(gCtx, "base/footer_content")
+		@partial(gCtx, "base/footer_content")
 
-            <script
-                src={templ.URL(
-                    templates.AssetUrlPrefix() +
-                    "/js/index.js?v=" +
-                    url.QueryEscape(setting.AssetVersion),
-                )}
-                onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"
-            ></script>
-        }
-    </html>
+		<script
+		src={templ.URL(
+			templates.AssetUrlPrefix() +
+			"/js/index.js?v=" +
+			url.QueryEscape(setting.AssetVersion),
+		)}
+		onerror="alert('Failed to load asset files from ' + this.src + '. Please make sure the asset files can be accessed.')"
+		></script>
+	}
+	</html>
 }
 
 templ meta(gCtx *giteaCtx.Context, repository *repo_model.Repository, owner *user_model.User) {
 
-    {{ goGetImport, _ := gCtx.Data["GoGetImport"].(string) }}
-    {{ repoCloneLink, _ := gCtx.Data["RepoCloneLink"].(*repo_model.CloneLink) }}
-    {{ goDocDirectory, _ := gCtx.Data["GoDocDirectory"].(string) }}
-    {{ goDocFile, _ := gCtx.Data["GoDocFile"].(string) }}
+	{{ goGetImport, _ := gCtx.Data["GoGetImport"].(string) }}
+	{{ repoCloneLink, _ := gCtx.Data["RepoCloneLink"].(*repo_model.CloneLink) }}
+	{{ goDocDirectory, _ := gCtx.Data["GoDocDirectory"].(string) }}
+	{{ goDocFile, _ := gCtx.Data["GoDocFile"].(string) }}
 
-    {{ metaAuthor := setting.UI.Meta.Author }}
-    {{ metaDescription := setting.UI.Meta.Description }}
-    {{ metaKeywords := setting.UI.Meta.Keywords }}
+	{{ metaAuthor := setting.UI.Meta.Author }}
+	{{ metaDescription := setting.UI.Meta.Description }}
+	{{ metaKeywords := setting.UI.Meta.Keywords }}
 
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <meta name="author"
-        if repository != nil {
-            content={owner.Name}
-        } else {
-            content={metaAuthor}
-        }
-    />
+	<meta name="author"
+	if repository != nil {
+		content={owner.Name}
+	} else {
+		content={metaAuthor}
+	}
+	/>
 
-    {{
-        description := ""
-        if repository != nil {
-            description += repository.Name
-            if repository.Description != "" {
-                description += " - "
-                description += repository.Description
-            }
-        } else {
-            description += metaDescription
-        }
-    }}
+	{{
+	description := ""
+	if repository != nil {
+		description += repository.Name
+		if repository.Description != "" {
+		description += " - "
+		description += repository.Description
+		}
+	} else {
+		description += metaDescription
+	}
+	}}
 
-    <meta name="description" content={description} />
-    <meta name="keywords" content={metaKeywords} />
-    <meta name="referrer" content="no-referrer" />
-    
-    if goGetImport != "" {
-        {{ var https string}}
-        if repoCloneLink != nil {
-            {{ https = repoCloneLink.HTTPS }}
-        }
-        <meta name="go-import" content={goGetImport + " git " + https} />
-        <meta name="go-source" content={goGetImport + " _ " + goDocDirectory + " " + goDocFile + " "} />
-    }
+	<meta name="description" content={description} />
+	<meta name="keywords" content={metaKeywords} />
+	<meta name="referrer" content="no-referrer" />
+	
+	if goGetImport != "" {
+	{{ var https string}}
+	if repoCloneLink != nil {
+		{{ https = repoCloneLink.HTTPS }}
+	}
+	<meta name="go-import" content={goGetImport + " git " + https} />
+	<meta name="go-source" content={goGetImport + " _ " + goDocDirectory + " " + goDocFile + " "} />
+	}
 }
 
 templ body(gCtx *giteaCtx.Context) {
-    {{ csrfToken, _ := gCtx.Data["CsrfToken"].(string) }}
+	{{ csrfToken, _ := gCtx.Data["CsrfToken"].(string) }}
 
-    <body
-        hx-headers={ fmt.Sprintf(`{"x-csrf-token": %s}`, strconv.Quote(csrfToken)) }
-        hx-swap="outerHTML" hx-ext="morph" hx-push-url="false"
-    >
-        {children...}
-    </body>
+	<body
+	hx-headers={ fmt.Sprintf(`{"x-csrf-token": %s}`, strconv.Quote(csrfToken)) }
+	hx-swap="outerHTML" hx-ext="morph" hx-push-url="false"
+	>
+	{children...}
+	</body>
 }

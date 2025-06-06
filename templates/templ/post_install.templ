@@ -4,32 +4,32 @@ import (
 	"code.gitea.io/gitea/modules/translation"
 	repo_model "code.gitea.io/gitea/models/repo"
 	user_model "code.gitea.io/gitea/models/user"
-    giteaCtx "code.gitea.io/gitea/services/context"
+	giteaCtx "code.gitea.io/gitea/services/context"
 )
 
 templ PostInstall(
-    gCtx *giteaCtx.Context,
-    title *string,
-    assetUrlPrefix string,
-    appSubUrl string,
-    locale translation.Locale,
-    repository *repo_model.Repository,
-    appName string,
-    signedUser *user_model.User,
-    owner *user_model.User,
+	gCtx *giteaCtx.Context,
+	title *string,
+	assetUrlPrefix string,
+	appSubUrl string,
+	locale translation.Locale,
+	repository *repo_model.Repository,
+	appName string,
+	signedUser *user_model.User,
+	owner *user_model.User,
 ) {
-    @Page(gCtx, locale, title, repository, appName, signedUser, owner) {
-        @PageContent(title, "install post-install tw-h-full") {
-            <div class="home tw-text-center tw-h-full tw-flex tw-flex-col tw-justify-center">
-                <div class="tw-ml-[-30px]">
-                    <img width="160" src={templ.URL(assetUrlPrefix + "/img/loading.png")} alt="" aria-hidden="true" />
-                </div>
-                <div class="tw-my-[2em] tw-text-[18px]">
-                    <a id="goto-user-login" href={templ.URL(appSubUrl + "/user/login")}>
-                        {locale.Tr("install.installing_desc")}
-                    </a>
-                </div>
-            </div>
-        }
-    }
+	@Page(gCtx, locale, title, repository, appName, signedUser, owner) {
+		@PageContent(title, "install post-install tw-h-full") {
+			<div class="home tw-text-center tw-h-full tw-flex tw-flex-col tw-justify-center">
+				<div class="tw-ml-[-30px]">
+					<img width="160" src={templ.URL(assetUrlPrefix + "/img/loading.png")} alt="" aria-hidden="true" />
+				</div>
+				<div class="tw-my-[2em] tw-text-[18px]">
+					<a id="goto-user-login" href={templ.URL(appSubUrl + "/user/login")}>
+						{locale.Tr("install.installing_desc")}
+					</a>
+				</div>
+			</div>
+		}
+	}
 }
