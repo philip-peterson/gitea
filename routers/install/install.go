@@ -5,6 +5,7 @@
 package install
 
 import (
+	"html/template"
 	"net/http"
 	"net/mail"
 	"os"
@@ -611,7 +612,9 @@ func SubmitInstall(ctx *context.Context) {
 func InstallDone(ctx *context.Context) { //nolint
 	assetUrlPrefix := setting.StaticURLPrefix + "/assets"
 
-	title, _ := ctx.Data["Title"].(string)
+	titleTemplate, _ := ctx.Data["Title"].(template.HTML)
+	title := string(titleTemplate)
+
 	signedUser, _ := ctx.Data[middleware.ContextDataKeySignedUser].(*user_model.User)
 	repo, _ := ctx.Data["Repo"].(*repo_model.Repository)
 	owner, _ := ctx.Data["Owner"].(*user_model.User)
