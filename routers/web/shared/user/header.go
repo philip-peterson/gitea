@@ -16,8 +16,7 @@ import (
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/gitrepo"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/optional"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/util"
@@ -39,12 +38,7 @@ func prepareContextForProfileBigAvatar(ctx *context.Context) {
 	}
 	ctx.Data["OpenIDs"] = openIDs
 	if len(ctx.ContextUser.Description) != 0 {
-		content, err := markdown.RenderString(markup.NewRenderContext(ctx).WithMetas(markup.ComposeSimpleDocumentMetas()), ctx.ContextUser.Description)
-		if err != nil {
-			ctx.ServerError("RenderString", err)
-			return
-		}
-		ctx.Data["RenderedDescription"] = content
+		ctx.Data["RenderedDescription"] = ctx.ContextUser.Description
 	}
 
 	orgs, err := db.Find[organization.Organization](ctx, organization.FindOrgOptions{

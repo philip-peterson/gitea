@@ -25,7 +25,7 @@ import (
 	giturl "code.gitea.io/gitea/modules/git/url"
 	"code.gitea.io/gitea/modules/httplib"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
+
 	"code.gitea.io/gitea/modules/optional"
 	"code.gitea.io/gitea/modules/setting"
 	api "code.gitea.io/gitea/modules/structs"
@@ -524,15 +524,6 @@ func (repo *Repository) composeCommonMetas(ctx context.Context) map[string]strin
 		unitExternalTracker, err := repo.GetUnit(ctx, unit.TypeExternalTracker)
 		if err == nil {
 			metas["format"] = unitExternalTracker.ExternalTrackerConfig().ExternalTrackerFormat
-			switch unitExternalTracker.ExternalTrackerConfig().ExternalTrackerStyle {
-			case markup.IssueNameStyleAlphanumeric:
-				metas["style"] = markup.IssueNameStyleAlphanumeric
-			case markup.IssueNameStyleRegexp:
-				metas["style"] = markup.IssueNameStyleRegexp
-				metas["regexp"] = unitExternalTracker.ExternalTrackerConfig().ExternalTrackerRegexpPattern
-			default:
-				metas["style"] = markup.IssueNameStyleNumeric
-			}
 		}
 
 		repo.MustOwner(ctx)
@@ -664,12 +655,7 @@ func (repo *Repository) CanContentChange() bool {
 
 // DescriptionHTML does special handles to description and return HTML string.
 func (repo *Repository) DescriptionHTML(ctx context.Context) template.HTML {
-	desc, err := markup.PostProcessDescriptionHTML(markup.NewRenderContext(ctx), repo.Description)
-	if err != nil {
-		log.Error("Failed to render description for %s (ID: %d): %v", repo.Name, repo.ID, err)
-		return template.HTML(markup.SanitizeDescription(repo.Description))
-	}
-	return template.HTML(markup.SanitizeDescription(desc))
+	return template.HTML(repo.Description)
 }
 
 // CloneLink represents different types of clone URLs of repository.

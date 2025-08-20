@@ -11,8 +11,7 @@ import (
 	"code.gitea.io/gitea/models/perm"
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/structs"
 )
@@ -243,12 +242,7 @@ func OrgAssignment(opts OrgAssignmentOptions) func(ctx *Context) {
 
 		ctx.Data["IsFollowing"] = ctx.Doer != nil && user_model.IsFollowing(ctx, ctx.Doer.ID, ctx.ContextUser.ID)
 		if len(ctx.ContextUser.Description) != 0 {
-			content, err := markdown.RenderString(markup.NewRenderContext(ctx), ctx.ContextUser.Description)
-			if err != nil {
-				ctx.ServerError("RenderString", err)
-				return
-			}
-			ctx.Data["RenderedDescription"] = content
+			ctx.Data["RenderedDescription"] = ctx.ContextUser.Description
 		}
 	}
 }

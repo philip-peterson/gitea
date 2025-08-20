@@ -10,17 +10,12 @@ import (
 	"math"
 	"net/url"
 	"regexp"
-	"strings"
-	"unicode"
 
 	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/renderhelper"
 	"code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/modules/emoji"
 	"code.gitea.io/gitea/modules/htmlutil"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/reqctx"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/translation"
@@ -38,62 +33,18 @@ func NewRenderUtils(ctx reqctx.RequestContext) *RenderUtils {
 // RenderCommitMessage renders commit message with XSS-safe and special links.
 func (ut *RenderUtils) RenderCommitMessage(msg string, repo *repo.Repository) template.HTML {
 	cleanMsg := template.HTMLEscapeString(msg)
-	// we can safely assume that it will not return any error, since there shouldn't be any special HTML.
-	// "repo" can be nil when rendering commit messages for deleted repositories in a user's dashboard feed.
-	fullMessage, err := markup.PostProcessCommitMessage(renderhelper.NewRenderContextRepoComment(ut.ctx, repo), cleanMsg)
-	if err != nil {
-		log.Error("PostProcessCommitMessage: %v", err)
-		return ""
-	}
-	msgLines := strings.Split(strings.TrimSpace(fullMessage), "\n")
-	if len(msgLines) == 0 {
-		return ""
-	}
-	return renderCodeBlock(template.HTML(msgLines[0]))
+	return template.HTML(cleanMsg)
 }
 
 // RenderCommitMessageLinkSubject renders commit message as a XSS-safe link to
 // the provided default url, handling for special links without email to links.
 func (ut *RenderUtils) RenderCommitMessageLinkSubject(msg, urlDefault string, repo *repo.Repository) template.HTML {
-	msgLine := strings.TrimLeftFunc(msg, unicode.IsSpace)
-	lineEnd := strings.IndexByte(msgLine, '\n')
-	if lineEnd > 0 {
-		msgLine = msgLine[:lineEnd]
-	}
-	msgLine = strings.TrimRightFunc(msgLine, unicode.IsSpace)
-	if len(msgLine) == 0 {
-		return ""
-	}
-
-	// we can safely assume that it will not return any error, since there shouldn't be any special HTML.
-	renderedMessage, err := markup.PostProcessCommitMessageSubject(renderhelper.NewRenderContextRepoComment(ut.ctx, repo), urlDefault, template.HTMLEscapeString(msgLine))
-	if err != nil {
-		log.Error("PostProcessCommitMessageSubject: %v", err)
-		return ""
-	}
-	return renderCodeBlock(template.HTML(renderedMessage))
+	return template.HTML("TODO: commit message link")
 }
 
 // RenderCommitBody extracts the body of a commit message without its title.
 func (ut *RenderUtils) RenderCommitBody(msg string, repo *repo.Repository) template.HTML {
-	msgLine := strings.TrimSpace(msg)
-	lineEnd := strings.IndexByte(msgLine, '\n')
-	if lineEnd > 0 {
-		msgLine = msgLine[lineEnd+1:]
-	} else {
-		return ""
-	}
-	msgLine = strings.TrimLeftFunc(msgLine, unicode.IsSpace)
-	if len(msgLine) == 0 {
-		return ""
-	}
-
-	renderedMessage, err := markup.PostProcessCommitMessage(renderhelper.NewRenderContextRepoComment(ut.ctx, repo), template.HTMLEscapeString(msgLine))
-	if err != nil {
-		log.Error("PostProcessCommitMessage: %v", err)
-		return ""
-	}
-	return template.HTML(renderedMessage)
+	return template.HTML("TODO: commit message body")
 }
 
 // Match text that is between back ticks.
@@ -107,12 +58,7 @@ func renderCodeBlock(htmlEscapedTextToRender template.HTML) template.HTML {
 
 // RenderIssueTitle renders issue/pull title with defined post processors
 func (ut *RenderUtils) RenderIssueTitle(text string, repo *repo.Repository) template.HTML {
-	renderedText, err := markup.PostProcessIssueTitle(renderhelper.NewRenderContextRepoComment(ut.ctx, repo), template.HTMLEscapeString(text))
-	if err != nil {
-		log.Error("PostProcessIssueTitle: %v", err)
-		return ""
-	}
-	return renderCodeBlock(template.HTML(renderedText))
+	return "TODO: issue title"
 }
 
 // RenderIssueSimpleTitle only renders with emoji and inline code block
@@ -215,12 +161,7 @@ func (ut *RenderUtils) renderLabelWithTag(label *issues_model.Label, tagName, ta
 
 // RenderEmoji renders html text with emoji post processors
 func (ut *RenderUtils) RenderEmoji(text string) template.HTML {
-	renderedText, err := markup.PostProcessEmoji(markup.NewRenderContext(ut.ctx), template.HTMLEscapeString(text))
-	if err != nil {
-		log.Error("RenderEmoji: %v", err)
-		return ""
-	}
-	return template.HTML(renderedText)
+	return "TODO: emoji"
 }
 
 // reactionToEmoji renders emoji for use in reactions
@@ -237,11 +178,7 @@ func reactionToEmoji(reaction string) template.HTML {
 }
 
 func (ut *RenderUtils) MarkdownToHtml(input string) template.HTML { //nolint:revive // variable naming triggers on Html, wants HTML
-	output, err := markdown.RenderString(markup.NewRenderContext(ut.ctx).WithMetas(markup.ComposeSimpleDocumentMetas()), input)
-	if err != nil {
-		log.Error("RenderString: %v", err)
-	}
-	return output
+	return "TODO: markdown to html"
 }
 
 func (ut *RenderUtils) RenderLabels(labels []*issues_model.Label, repoLink string, issue *issues_model.Issue) template.HTML {

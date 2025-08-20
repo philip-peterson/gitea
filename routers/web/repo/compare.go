@@ -6,14 +6,10 @@ package repo
 import (
 	"bufio"
 	gocontext "context"
-	"encoding/csv"
-	"errors"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"code.gitea.io/gitea/models/db"
@@ -24,13 +20,11 @@ import (
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/charset"
-	csv_module "code.gitea.io/gitea/modules/csv"
 	"code.gitea.io/gitea/modules/fileicon"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/gitrepo"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
+
 	"code.gitea.io/gitea/modules/optional"
 	"code.gitea.io/gitea/modules/setting"
 	api "code.gitea.io/gitea/modules/structs"
@@ -83,7 +77,6 @@ func setCompareContext(ctx *context.Context, before, head *git.Commit, headOwner
 
 	setPathsCompareContext(ctx, before, head, headOwner, headName)
 	setImageCompareContext(ctx)
-	setCsvCompareContext(ctx)
 }
 
 // SourceCommitURL creates a relative URL for a commit in the given repository
@@ -110,81 +103,6 @@ func setPathsCompareContext(ctx *context.Context, base, head *git.Commit, headOw
 func setImageCompareContext(ctx *context.Context) {
 	ctx.Data["IsSniffedTypeAnImage"] = func(st typesniffer.SniffedType) bool {
 		return st.IsImage() && (setting.UI.SVG.Enabled || !st.IsSvgImage())
-	}
-}
-
-// setCsvCompareContext sets context data that is required by the CSV compare template
-func setCsvCompareContext(ctx *context.Context) {
-	ctx.Data["IsCsvFile"] = func(diffFile *gitdiff.DiffFile) bool {
-		extension := strings.ToLower(filepath.Ext(diffFile.Name))
-		return extension == ".csv" || extension == ".tsv"
-	}
-
-	type CsvDiffResult struct {
-		Sections []*gitdiff.TableDiffSection
-		Error    string
-	}
-
-	ctx.Data["CreateCsvDiff"] = func(diffFile *gitdiff.DiffFile, baseBlob, headBlob *git.Blob) CsvDiffResult {
-		if diffFile == nil {
-			return CsvDiffResult{nil, ""}
-		}
-
-		errTooLarge := errors.New(ctx.Locale.TrString("repo.error.csv.too_large"))
-
-		csvReaderFromCommit := func(ctx *markup.RenderContext, blob *git.Blob) (*csv.Reader, io.Closer, error) {
-			if blob == nil {
-				// It's ok for blob to be nil (file added or deleted)
-				return nil, nil, nil
-			}
-
-			if setting.UI.CSV.MaxFileSize != 0 && setting.UI.CSV.MaxFileSize < blob.Size() {
-				return nil, nil, errTooLarge
-			}
-
-			reader, err := blob.DataAsync()
-			if err != nil {
-				return nil, nil, err
-			}
-
-			csvReader, err := csv_module.CreateReaderAndDetermineDelimiter(ctx, charset.ToUTF8WithFallbackReader(reader, charset.ConvertOpts{}))
-			return csvReader, reader, err
-		}
-
-		baseReader, baseBlobCloser, err := csvReaderFromCommit(markup.NewRenderContext(ctx).WithRelativePath(diffFile.OldName), baseBlob)
-		if baseBlobCloser != nil {
-			defer baseBlobCloser.Close()
-		}
-		if err != nil {
-			if err == errTooLarge {
-				return CsvDiffResult{nil, err.Error()}
-			}
-			log.Error("error whilst creating csv.Reader from file %s in base commit %s in %s: %v", diffFile.Name, baseBlob.ID.String(), ctx.Repo.Repository.Name, err)
-			return CsvDiffResult{nil, "unable to load file"}
-		}
-
-		headReader, headBlobCloser, err := csvReaderFromCommit(markup.NewRenderContext(ctx).WithRelativePath(diffFile.Name), headBlob)
-		if headBlobCloser != nil {
-			defer headBlobCloser.Close()
-		}
-		if err != nil {
-			if err == errTooLarge {
-				return CsvDiffResult{nil, err.Error()}
-			}
-			log.Error("error whilst creating csv.Reader from file %s in head commit %s in %s: %v", diffFile.Name, headBlob.ID.String(), ctx.Repo.Repository.Name, err)
-			return CsvDiffResult{nil, "unable to load file"}
-		}
-
-		sections, err := gitdiff.CreateCsvDiff(diffFile, baseReader, headReader)
-		if err != nil {
-			errMessage, err := csv_module.FormatError(err, ctx.Locale)
-			if err != nil {
-				log.Error("CreateCsvDiff FormatError failed: %v", err)
-				return CsvDiffResult{nil, "unknown csv diff error"}
-			}
-			return CsvDiffResult{nil, errMessage}
-		}
-		return CsvDiffResult{sections, ""}
 	}
 }
 

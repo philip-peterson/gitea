@@ -14,7 +14,7 @@ import (
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/json"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
+
 	api "code.gitea.io/gitea/modules/structs"
 	"code.gitea.io/gitea/modules/util"
 	webhook_module "code.gitea.io/gitea/modules/webhook"
@@ -195,7 +195,8 @@ func (telegramConvertor) WorkflowJob(p *api.WorkflowJobPayload) (TelegramPayload
 func createTelegramPayloadHTML(msgHTML string) TelegramPayload {
 	// https://core.telegram.org/bots/api#formatting-options
 	return TelegramPayload{
-		Message:           strings.TrimSpace(string(markup.Sanitize(msgHTML))),
+		// TODO remove telegram payload
+		Message:           strings.TrimSpace(string(msgHTML)),
 		ParseMode:         "HTML",
 		DisableWebPreview: true,
 	}

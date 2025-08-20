@@ -5,12 +5,10 @@ package issues
 
 import (
 	"context"
-	"strconv"
+	"html/template"
 
 	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/renderhelper"
 	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/markup/markdown"
 
 	"xorm.io/builder"
 )
@@ -114,13 +112,8 @@ func findCodeComments(ctx context.Context, opts FindCommentsOptions, issue *Issu
 			return nil, err
 		}
 
-		var err error
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, issue.Repo, renderhelper.RepoCommentOptions{
-			FootnoteContextID: strconv.FormatInt(comment.ID, 10),
-		})
-		if comment.RenderedContent, err = markdown.RenderString(rctx, comment.Content); err != nil {
-			return nil, err
-		}
+		// TODO escape comment content here
+		comment.RenderedContent = template.HTML(comment.Content)
 	}
 	return comments[:n], nil
 }

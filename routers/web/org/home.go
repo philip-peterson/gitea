@@ -5,16 +5,14 @@ package org
 
 import (
 	"net/http"
-	"path"
 	"strings"
 
 	"code.gitea.io/gitea/models/db"
 	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/templates"
 	"code.gitea.io/gitea/modules/util"
@@ -179,14 +177,7 @@ func prepareOrgProfileReadme(ctx *context.Context, prepareResult *shared_user.Pr
 		return false
 	}
 
-	rctx := renderhelper.NewRenderContextRepoFile(ctx, profileRepo, renderhelper.RepoFileOptions{
-		CurrentRefPath: path.Join("branch", util.PathEscapeSegments(profileRepo.DefaultBranch)),
-	})
-	ctx.Data["ProfileReadmeContent"], err = markdown.RenderString(rctx, readmeBytes)
-	if err != nil {
-		log.Error("failed to GetBlobContent for profile %q (view as %q) readme: %v", profileRepo.FullName(), viewAs, err)
-		return false
-	}
+	ctx.Data["ProfileReadmeContent"] = readmeBytes
 	ctx.Data["IsViewingOrgAsMember"] = viewAsMember
 	return true
 }

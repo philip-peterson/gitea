@@ -13,9 +13,8 @@ import (
 	"strings"
 
 	activities_model "code.gitea.io/gitea/models/activities"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/templates"
 	"code.gitea.io/gitea/modules/util"
@@ -54,12 +53,8 @@ func renderCommentMarkdown(ctx *context.Context, act *activities_model.Action, c
 	if act.Repo == nil {
 		return ""
 	}
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, act.Repo).WithUseAbsoluteLink(true)
-	rendered, err := markdown.RenderString(rctx, content)
-	if err != nil {
-		return ""
-	}
-	return rendered
+	rendered := "TODO: comment content"
+	return template.HTML(rendered)
 }
 
 // feedActionsToFeedItems convert gitea's Action feed to feeds Item
@@ -290,12 +285,7 @@ func releasesToFeedItems(ctx *context.Context, releases []*repo_model.Release) (
 		}
 
 		link := &feeds.Link{Href: rel.HTMLURL()}
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, rel.Repo).WithUseAbsoluteLink(true)
-		content, err = markdown.RenderString(rctx,
-			rel.Note)
-		if err != nil {
-			return nil, err
-		}
+		content = "TODO: rel note"
 
 		items = append(items, &feeds.Item{
 			Title:   title,

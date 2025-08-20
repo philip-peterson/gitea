@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"maps"
 	"strconv"
 	"strings"
@@ -14,11 +15,10 @@ import (
 
 	activities_model "code.gitea.io/gitea/models/activities"
 	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/renderhelper"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/emoji"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/translation"
 	incoming_payload "code.gitea.io/gitea/services/mailer/incoming/payload"
@@ -67,11 +67,7 @@ func composeIssueCommentMessages(ctx context.Context, comment *mailComment, lang
 	}
 
 	// This is the body of the new issue or comment, not the mail body
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, comment.Issue.Repo).WithUseAbsoluteLink(true)
-	body, err := markdown.RenderString(rctx, comment.Content)
-	if err != nil {
-		return nil, err
-	}
+	body := template.HTML("TODO: comment content")
 
 	if setting.MailService.EmbedAttachmentImages {
 		attEmbedder := newMailAttachmentBase64Embedder(comment.Doer, comment.Issue.Repo, maxEmailBodySize)
@@ -144,6 +140,7 @@ func composeIssueCommentMessages(ctx context.Context, comment *mailComment, lang
 	reference := generateMessageIDForIssue(comment.Issue, nil, activities_model.ActionType(0))
 
 	var replyPayload []byte
+	var err error
 	if comment.Comment != nil {
 		if comment.Comment.Type.HasMailReplySupport() {
 			replyPayload, err = incoming_payload.CreateReferencePayload(comment.Comment)

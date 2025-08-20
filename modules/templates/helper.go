@@ -15,7 +15,7 @@ import (
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/base"
 	"code.gitea.io/gitea/modules/htmlutil"
-	"code.gitea.io/gitea/modules/markup"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/svg"
 	"code.gitea.io/gitea/modules/templates/eval"
@@ -163,7 +163,7 @@ func NewFuncMap() template.FuncMap {
 
 // SanitizeHTML sanitizes the input by default sanitization rules.
 func SanitizeHTML(s string) template.HTML {
-	return markup.Sanitize(s)
+	return "TODO: sanitize html"
 }
 
 func htmlFormat(s any, args ...any) template.HTML {

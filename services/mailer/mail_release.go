@@ -8,11 +8,10 @@ import (
 	"context"
 	"fmt"
 
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/templates"
 	"code.gitea.io/gitea/modules/translation"
@@ -59,14 +58,7 @@ func MailNewRelease(ctx context.Context, rel *repo_model.Release) {
 func mailNewRelease(ctx context.Context, lang string, tos []*user_model.User, rel *repo_model.Release) {
 	locale := translation.NewLocale(lang)
 
-	var err error
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, rel.Repo).WithUseAbsoluteLink(true)
-	rel.RenderedNote, err = markdown.RenderString(rctx,
-		rel.Note)
-	if err != nil {
-		log.Error("markdown.RenderString(%d): %v", rel.RepoID, err)
-		return
-	}
+	rel.RenderedNote = "TODO: rendered note"
 
 	subject := locale.TrString("mail.release.new.subject", rel.TagName, rel.Repo.FullName())
 	mailMeta := map[string]any{

@@ -16,8 +16,7 @@ import (
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/highlight"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/markup/external"
+
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/ssh"
 	"code.gitea.io/gitea/modules/storage"
@@ -44,7 +43,7 @@ import (
 	indexer_service "code.gitea.io/gitea/services/indexer"
 	"code.gitea.io/gitea/services/mailer"
 	mailer_incoming "code.gitea.io/gitea/services/mailer/incoming"
-	markup_service "code.gitea.io/gitea/services/markup"
+
 	repo_migrations "code.gitea.io/gitea/services/migrations"
 	mirror_service "code.gitea.io/gitea/services/mirror"
 	"code.gitea.io/gitea/services/oauth2_provider"

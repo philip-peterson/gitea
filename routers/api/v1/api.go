@@ -728,13 +728,6 @@ func mustEnableIssuesOrPulls(ctx *context.APIContext) {
 	}
 }
 
-func mustEnableWiki(ctx *context.APIContext) {
-	if !(ctx.Repo.CanRead(unit.TypeWiki)) {
-		ctx.APIErrorNotFound()
-		return
-	}
-}
-
 // FIXME: for consistency, maybe most mustNotBeArchived checks should be replaced with mustEnableEditor
 func mustNotBeArchived(ctx *context.APIContext) {
 	if ctx.Repo.Repository.IsArchived {
@@ -974,9 +967,6 @@ func Routes() *web.Router {
 			m.Get("/version", misc.Version)
 			m.Get("/signing-key.gpg", misc.SigningKeyGPG)
 			m.Get("/signing-key.pub", misc.SigningKeySSH)
-			m.Post("/markup", reqToken(), bind(api.MarkupOption{}), misc.Markup)
-			m.Post("/markdown", reqToken(), bind(api.MarkdownOption{}), misc.Markdown)
-			m.Post("/markdown/raw", reqToken(), misc.MarkdownRaw)
 			m.Get("/gitignore/templates", misc.ListGitignoresTemplates)
 			m.Get("/gitignore/templates/{name}", misc.GetGitignoreTemplateInfo)
 			m.Get("/licenses", misc.ListLicenseTemplates)
@@ -1310,18 +1300,6 @@ func Routes() *web.Router {
 					m.Combo("").Get(repo.ListTrackedTimesByRepository)
 					m.Combo("/{timetrackingusername}").Get(repo.ListTrackedTimesByUser)
 				}, mustEnableIssues, reqToken())
-				m.Group("/wiki", func() {
-					m.Combo("/page/{pageName}").
-						Get(repo.GetWikiPage).
-						Patch(mustNotBeArchived, reqToken(), reqRepoWriter(unit.TypeWiki), bind(api.CreateWikiPageOptions{}), repo.EditWikiPage).
-						Delete(mustNotBeArchived, reqToken(), reqRepoWriter(unit.TypeWiki), repo.DeleteWikiPage)
-					m.Get("/revisions/{pageName}", repo.ListPageRevisions)
-					m.Post("/new", reqToken(), mustNotBeArchived, reqRepoWriter(unit.TypeWiki), bind(api.CreateWikiPageOptions{}), repo.NewWikiPage)
-					m.Get("/pages", repo.ListWikiPages)
-				}, mustEnableWiki)
-				m.Post("/markup", reqToken(), bind(api.MarkupOption{}), misc.Markup)
-				m.Post("/markdown", reqToken(), bind(api.MarkdownOption{}), misc.Markdown)
-				m.Post("/markdown/raw", reqToken(), misc.MarkdownRaw)
 				m.Get("/stargazers", reqStarsEnabled(), repo.ListStargazers)
 				m.Get("/subscribers", repo.ListSubscribers)
 				m.Group("/subscription", func() {

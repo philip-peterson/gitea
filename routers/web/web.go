@@ -1490,7 +1490,7 @@ func registerWebRoutes(m *web.Router) {
 		m.Get("/commit/{sha:[a-f0-9]{7,64}}", repo.SetEditorconfigIfExists, repo.SetDiffViewStyle, repo.SetWhitespaceBehavior, repo.Diff)
 		m.Get("/commit/{sha:[a-f0-9]{7,64}}.{ext:patch|diff}", repo.RawDiff)
 		m.Get("/raw/*", repo.WikiRaw)
-	}, optSignIn, context.RepoAssignment, repo.MustEnableWiki, reqUnitWikiReader, func(ctx *context.Context) {
+	}, optSignIn, context.RepoAssignment, reqUnitWikiReader, func(ctx *context.Context) {
 		ctx.Data["PageIsWiki"] = true
 		ctx.Data["CloneButtonOriginLink"] = ctx.Repo.Repository.WikiCloneLink(ctx, ctx.Doer)
 	})

@@ -240,6 +240,7 @@ type IssueConfigValidation struct {
 // IssueTemplateType defines issue template type
 type IssueTemplateType string
 
+// TODO remove issue templates
 const (
 	IssueTemplateTypeMarkdown IssueTemplateType = "md"
 	IssueTemplateTypeYaml     IssueTemplateType = "yaml"

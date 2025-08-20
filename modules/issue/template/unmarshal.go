@@ -10,10 +10,9 @@ import (
 	"strconv"
 
 	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/markup/markdown"
+
 	"code.gitea.io/gitea/modules/setting"
 	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
 
 	"gopkg.in/yaml.v3"
 )
@@ -95,29 +94,7 @@ func unmarshal(filename string, content []byte) (*api.IssueTemplate, error) {
 	}{}
 
 	if typ := it.Type(); typ == api.IssueTemplateTypeMarkdown {
-		if templateBody, err := markdown.ExtractMetadata(string(content), it); err != nil {
-			// The only thing we know here is that we can't extract metadata from the content,
-			// it's hard to tell if metadata doesn't exist or metadata isn't valid.
-			// There's an example template:
-			//
-			//    ---
-			//    # Title
-			//    ---
-			//    Content
-			//
-			// It could be a valid markdown with two horizontal lines, or an invalid markdown with wrong metadata.
-
-			it.Content = string(content)
-			it.Name = path.Base(it.FileName) // paths in Git are always '/' separated - do not use filepath!
-			it.About = util.EllipsisDisplayString(it.Content, 80)
-		} else {
-			it.Content = templateBody
-			if it.About == "" {
-				if _, err := markdown.ExtractMetadata(string(content), compatibleTemplate); err == nil && compatibleTemplate.About != "" {
-					it.About = compatibleTemplate.About
-				}
-			}
-		}
+		it.Content = string(content)
 	} else if typ == api.IssueTemplateTypeYaml {
 		if err := yaml.Unmarshal(content, it); err != nil {
 			return nil, fmt.Errorf("yaml unmarshal: %w", err)

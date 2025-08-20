@@ -13,7 +13,6 @@ import (
 
 	git_model "code.gitea.io/gitea/models/git"
 	issue_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/renderhelper"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/actions"
 	"code.gitea.io/gitea/modules/charset"
@@ -21,9 +20,8 @@ import (
 	"code.gitea.io/gitea/modules/git/attribute"
 	"code.gitea.io/gitea/modules/highlight"
 	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
+
 	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/typesniffer"
 	"code.gitea.io/gitea/modules/util"
 	"code.gitea.io/gitea/services/context"
 	issue_service "code.gitea.io/gitea/services/issue"
@@ -58,43 +56,6 @@ func prepareFileViewLfsAttrs(ctx *context.Context) (*attribute.Attributes, bool)
 	}
 	ctx.Data["IsVendored"], ctx.Data["IsGenerated"] = attrs.GetVendored().Value(), attrs.GetGenerated().Value()
 	return attrs, true
-}
-
-func handleFileViewRenderMarkup(ctx *context.Context, filename string, sniffedType typesniffer.SniffedType, prefetchBuf []byte, utf8Reader io.Reader) bool {
-	markupType := markup.DetectMarkupTypeByFileName(filename)
-	if markupType == "" {
-		markupType = markup.DetectRendererType(filename, sniffedType, prefetchBuf)
-	}
-	if markupType == "" {
-		return false
-	}
-
-	ctx.Data["HasSourceRenderedToggle"] = true
-
-	if ctx.FormString("display") == "source" {
-		return false
-	}
-
-	ctx.Data["MarkupType"] = markupType
-	metas := ctx.Repo.Repository.ComposeRepoFileMetas(ctx)
-	metas["RefTypeNameSubURL"] = ctx.Repo.RefTypeNameSubURL()
-	rctx := renderhelper.NewRenderContextRepoFile(ctx, ctx.Repo.Repository, renderhelper.RepoFileOptions{
-		CurrentRefPath:  ctx.Repo.RefTypeNameSubURL(),
-		CurrentTreePath: path.Dir(ctx.Repo.TreePath),
-	}).
-		WithMarkupType(markupType).
-		WithRelativePath(ctx.Repo.TreePath).
-		WithMetas(metas)
-
-	var err error
-	ctx.Data["EscapeStatus"], ctx.Data["FileContent"], err = markupRender(ctx, rctx, utf8Reader)
-	if err != nil {
-		ctx.ServerError("Render", err)
-		return true
-	}
-	// to prevent iframe from loading third-party url
-	ctx.Resp.Header().Add("Content-Security-Policy", "frame-src 'self'")
-	return true
 }
 
 func handleFileViewRenderSource(ctx *context.Context, filename string, attrs *attribute.Attributes, fInfo *fileInfo, utf8Reader io.Reader) bool {
@@ -245,9 +206,6 @@ func prepareFileView(ctx *context.Context, entry *git.TreeEntry) {
 	switch {
 	case fInfo.fileSize >= setting.UI.MaxDisplayFileSize:
 		ctx.Data["IsFileTooLarge"] = true
-	case handleFileViewRenderMarkup(ctx, entry.Name(), fInfo.st, buf, utf8Reader):
-		// it also sets ctx.Data["FileContent"] and more
-		ctx.Data["IsMarkup"] = true
 	case handleFileViewRenderSource(ctx, entry.Name(), attrs, fInfo, utf8Reader):
 		// it also sets ctx.Data["FileContent"] and more
 		ctx.Data["IsDisplayingSource"] = true

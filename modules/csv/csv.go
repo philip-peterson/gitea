@@ -5,13 +5,13 @@ package csv
 
 import (
 	"bytes"
+	"context"
 	stdcsv "encoding/csv"
 	"io"
 	"path"
 	"regexp"
 	"strings"
 
-	"code.gitea.io/gitea/modules/markup"
 	"code.gitea.io/gitea/modules/translation"
 	"code.gitea.io/gitea/modules/util"
 )
@@ -35,7 +35,7 @@ func CreateReader(input io.Reader, delimiter rune) *stdcsv.Reader {
 
 // CreateReaderAndDetermineDelimiter tries to guess the field delimiter from the content and creates a csv.Reader.
 // Reads at most guessSampleSize bytes.
-func CreateReaderAndDetermineDelimiter(ctx *markup.RenderContext, rd io.Reader) (*stdcsv.Reader, error) {
+func CreateReaderAndDetermineDelimiter(ctx *context.Context, rd io.Reader) (*stdcsv.Reader, error) {
 	data := make([]byte, guessSampleSize)
 	size, err := util.ReadAtMost(rd, data)
 	if err != nil {
@@ -50,7 +50,7 @@ func CreateReaderAndDetermineDelimiter(ctx *markup.RenderContext, rd io.Reader) 
 
 // determineDelimiter takes a RenderContext and if it isn't nil and the Filename has an extension that specifies the delimiter,
 // it is used as the delimiter. Otherwise we call guessDelimiter with the data passed
-func determineDelimiter(ctx *markup.RenderContext, data []byte) rune {
+func determineDelimiter(ctx *context.Context, data []byte) rune {
 	extension := ".csv"
 	if ctx != nil {
 		extension = strings.ToLower(path.Ext(ctx.RenderOptions.RelativePath))
