@@ -9,3 +9,24 @@
 	</div>
 </div>
 {{template "base/footer" .}}
+
+
+<script>
+import {initInstall} from './features/install.ts';
+
+const initStartTime = performance.now();
+const initPerformanceTracer = callInitFunctions([
+  initInstall
+]);
+
+// it must be the last one, then the "querySelectorAll" only needs to be executed once for global init functions.
+initGlobalSelectorObserver(initPerformanceTracer);
+if (initPerformanceTracer) initPerformanceTracer.printResults();
+
+const initDur = performance.now() - initStartTime;
+if (initDur > 500) {
+  console.error(`slow init functions took ${initDur.toFixed(3)}ms`);
+}
+
+document.dispatchEvent(new CustomEvent('gitea:index-ready'));
+</script>
