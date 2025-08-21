@@ -5,6 +5,7 @@ package repo
 
 import (
 	"fmt"
+	"html/template"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -992,14 +993,7 @@ func preparePullViewReviewAndMerge(ctx *context.Context, issue *issues_model.Iss
 
 func prepareIssueViewContent(ctx *context.Context, issue *issues_model.Issue) {
 	var err error
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, ctx.Repo.Repository, renderhelper.RepoCommentOptions{
-		FootnoteContextID: "0", // Set footnote context ID to 0 for the issue content
-	})
-	issue.RenderedContent, err = markdown.RenderString(rctx, issue.Content)
-	if err != nil {
-		ctx.ServerError("RenderString", err)
-		return
-	}
+	issue.RenderedContent = template.HTML(issue.Content)
 	if issue.ShowRole, err = roleDescriptor(ctx, issue.Repo, issue.Poster, nil, issue, issue.HasOriginalAuthor()); err != nil {
 		ctx.ServerError("roleDescriptor", err)
 		return

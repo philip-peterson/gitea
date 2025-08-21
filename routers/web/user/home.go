@@ -20,7 +20,6 @@ import (
 	git_model "code.gitea.io/gitea/models/git"
 	issues_model "code.gitea.io/gitea/models/issues"
 	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
@@ -262,12 +261,7 @@ func Milestones(ctx *context.Context) {
 			continue
 		}
 
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, milestones[i].Repo)
-		milestones[i].RenderedContent, err = markdown.RenderString(rctx, milestones[i].Content)
-		if err != nil {
-			ctx.ServerError("RenderString", err)
-			return
-		}
+		milestones[i].RenderedContent = "TODO milestone content" // milestones[i].Content
 
 		if milestones[i].Repo.IsTimetrackerEnabled(ctx) {
 			err := milestones[i].LoadTotalTrackedTime(ctx)
