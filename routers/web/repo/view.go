@@ -150,21 +150,12 @@ func loadLatestCommitData(ctx *context.Context, latestCommit *git.Commit) bool {
 	return true
 }
 
-func markupRender(ctx *context.Context, renderCtx *markup.RenderContext, input io.Reader) (escaped *charset.EscapeStatus, output template.HTML, err error) {
-	markupRd, markupWr := io.Pipe()
-	defer markupWr.Close()
-	done := make(chan struct{})
-	go func() {
-		sb := &strings.Builder{}
-		// We allow NBSP here this is rendered
-		escaped, _ = charset.EscapeControlReader(markupRd, sb, ctx.Locale, charset.RuneNBSP)
-		output = template.HTML(sb.String())
-		close(done)
-	}()
-	err = markup.Render(renderCtx, input, markupWr)
-	_ = markupWr.CloseWithError(err)
-	<-done
-	return escaped, output, err
+func markupRender(ctx *context.Context, renderCtx interface{}, input io.Reader) (escaped *charset.EscapeStatus, output template.HTML, err error) {
+	// TODO markup: Replace with new markup rendering system
+	sb := &strings.Builder{}
+	escaped, _ = charset.EscapeControlReader(input, sb, ctx.Locale, charset.RuneNBSP)
+	output = template.HTML(sb.String())
+	return escaped, output, nil
 }
 
 func checkHomeCodeViewable(ctx *context.Context) {

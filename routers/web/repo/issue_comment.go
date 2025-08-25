@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"strconv"
 
 	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/renderhelper"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/gitrepo"
@@ -279,14 +277,8 @@ func UpdateCommentContent(ctx *context.Context) {
 
 	var renderedContent template.HTML
 	if comment.Content != "" {
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, ctx.Repo.Repository, renderhelper.RepoCommentOptions{
-			FootnoteContextID: strconv.FormatInt(comment.ID, 10),
-		})
-		renderedContent, err = markdown.RenderString(rctx, comment.Content)
-		if err != nil {
-			ctx.ServerError("RenderString", err)
-			return
-		}
+		// TODO markdown: Replace with new markdown rendering system
+		renderedContent = template.HTML(template.HTMLEscapeString(comment.Content))
 	} else {
 		contentEmpty := fmt.Sprintf(`<span class="no-content">%s</span>`, ctx.Tr("repo.issues.no_content"))
 		renderedContent = template.HTML(contentEmpty)

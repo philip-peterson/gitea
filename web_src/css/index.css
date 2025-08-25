@@ -43,11 +43,6 @@
 @import "./features/cropper.css";
 @import "./features/console.css";
 
-@import "./markup/content.css";
-@import "./markup/codecopy.css";
-@import "./markup/codepreview.css";
-@import "./markup/asciicast.css";
-
 @import "./chroma/base.css";
 @import "./codemirror/base.css";
 @import "./font_i18n.css";

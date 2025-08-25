@@ -491,7 +491,8 @@ func registerWebRoutes(m *web.Router) {
 		m.Methods("GET, HEAD", "/*", public.FileHandlerFunc())
 	}, optionsCorsHandler())
 
-	m.Post("/-/markup", reqSignIn, web.Bind(structs.MarkupOption{}), misc.Markup)
+	// TODO markup: Re-enable when new markup system is ready
+	// m.Post("/-/markup", reqSignIn, web.Bind(structs.MarkupOption{}), misc.Markup)
 
 	m.Group("/explore", func() {
 		m.Get("", func(ctx *context.Context) {
@@ -841,7 +842,7 @@ func registerWebRoutes(m *web.Router) {
 	reqRepoActionsWriter := context.RequireUnitWriter(unit.TypeActions)
 
 	// the legacy names "reqRepoXxx" should be renamed to the correct name "reqUnitXxx", these permissions are for units, not repos
-	reqUnitsWithMarkdown := context.RequireUnitReader(unit.TypeCode, unit.TypeIssues, unit.TypePullRequests, unit.TypeReleases, unit.TypeWiki)
+	// reqUnitsWithMarkdown := context.RequireUnitReader(unit.TypeCode, unit.TypeIssues, unit.TypePullRequests, unit.TypeReleases, unit.TypeWiki)
 	reqUnitCodeReader := context.RequireUnitReader(unit.TypeCode)
 	reqUnitIssuesReader := context.RequireUnitReader(unit.TypeIssues)
 	reqUnitPullsReader := context.RequireUnitReader(unit.TypePullRequests)
@@ -1174,7 +1175,8 @@ func registerWebRoutes(m *web.Router) {
 	// user/org home, including rss feeds like "/{username}/{reponame}.rss"
 	m.Get("/{username}/{reponame}", optSignIn, context.RepoAssignment, context.RepoRefByType(git.RefTypeBranch), repo.SetEditorconfigIfExists, repo.Home)
 
-	m.Post("/{username}/{reponame}/markup", optSignIn, context.RepoAssignment, reqUnitsWithMarkdown, web.Bind(structs.MarkupOption{}), misc.Markup)
+	// TODO markup: Re-enable when new markup system is ready
+	// m.Post("/{username}/{reponame}/markup", optSignIn, context.RepoAssignment, reqUnitsWithMarkdown, web.Bind(structs.MarkupOption{}), misc.Markup)
 
 	m.Group("/{username}/{reponame}", func() {
 		m.Get("/find/*", repo.FindFiles)

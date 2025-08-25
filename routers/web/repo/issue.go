@@ -17,7 +17,6 @@ import (
 	"code.gitea.io/gitea/models/organization"
 	access_model "code.gitea.io/gitea/models/perm/access"
 	project_model "code.gitea.io/gitea/models/project"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
@@ -364,14 +363,8 @@ func UpdateIssueContent(ctx *context.Context) {
 		}
 	}
 
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, ctx.Repo.Repository, renderhelper.RepoCommentOptions{
-		FootnoteContextID: "0",
-	})
-	content, err := markdown.RenderString(rctx, issue.Content)
-	if err != nil {
-		ctx.ServerError("RenderString", err)
-		return
-	}
+	// TODO markdown: Replace with new markdown rendering system
+	content := template.HTML(template.HTMLEscapeString(issue.Content))
 
 	ctx.JSON(http.StatusOK, map[string]any{
 		"content":        content,

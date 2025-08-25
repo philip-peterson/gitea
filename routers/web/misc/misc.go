@@ -47,3 +47,11 @@ func StaticRedirect(target string) func(w http.ResponseWriter, req *http.Request
 		http.Redirect(w, req, path.Join(setting.StaticURLPrefix, target), http.StatusMovedPermanently)
 	}
 }
+
+// TODO markup: Replace with new markup system
+// Markup placeholder function
+func Markup(w http.ResponseWriter, req *http.Request) {
+	// Placeholder - markup functionality disabled
+	w.WriteHeader(http.StatusNotImplemented)
+	w.Write([]byte("Markup functionality temporarily disabled"))
+}

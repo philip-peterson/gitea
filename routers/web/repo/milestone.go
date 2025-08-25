@@ -4,12 +4,12 @@
 package repo
 
 import (
+	"html/template"
 	"net/http"
 	"net/url"
 
 	"code.gitea.io/gitea/models/db"
 	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/renderhelper"
 
 	"code.gitea.io/gitea/modules/optional"
 	"code.gitea.io/gitea/modules/setting"
@@ -69,12 +69,8 @@ func Milestones(ctx *context.Context) {
 		}
 	}
 	for _, m := range miles {
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, ctx.Repo.Repository)
-		m.RenderedContent, err = markdown.RenderString(rctx, m.Content)
-		if err != nil {
-			ctx.ServerError("RenderString", err)
-			return
-		}
+		// TODO markdown: Replace with new markdown rendering system
+		m.RenderedContent = template.HTML(template.HTMLEscapeString(m.Content))
 	}
 	ctx.Data["Milestones"] = miles
 
@@ -250,12 +246,8 @@ func MilestoneIssuesAndPulls(ctx *context.Context) {
 		return
 	}
 
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, ctx.Repo.Repository)
-	milestone.RenderedContent, err = markdown.RenderString(rctx, milestone.Content)
-	if err != nil {
-		ctx.ServerError("RenderString", err)
-		return
-	}
+	// TODO markdown: Replace with new markdown rendering system
+	milestone.RenderedContent = template.HTML(template.HTMLEscapeString(milestone.Content))
 
 	ctx.Data["Title"] = milestone.Name
 	ctx.Data["Milestone"] = milestone

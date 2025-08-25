@@ -161,9 +161,9 @@ func NewFuncMap() template.FuncMap {
 	}
 }
 
-// SanitizeHTML sanitizes the input by default sanitization rules.
+// SanitizeHTML sanitizes the input by HTML entity encoding.
 func SanitizeHTML(s string) template.HTML {
-	return "TODO: sanitize html"
+	return template.HTML(template.HTMLEscapeString(s))
 }
 
 func htmlFormat(s any, args ...any) template.HTML {

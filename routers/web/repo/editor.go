@@ -73,7 +73,8 @@ func prepareEditorCommitFormOptions(ctx *context.Context, editorAction string) *
 	ctx.Data["CommitFormOptions"] = commitFormOptions
 
 	// for online editor
-	ctx.Data["PreviewableExtensions"] = strings.Join(markup.PreviewableExtensions(), ",")
+	// TODO markup: Replace with new markup rendering system
+	ctx.Data["PreviewableExtensions"] = ""
 	ctx.Data["LineWrapExtensions"] = strings.Join(setting.Repository.Editor.LineWrapExtensions, ",")
 	ctx.Data["IsEditingFileOnly"] = ctx.FormString("return_uri") != ""
 	ctx.Data["ReturnURI"] = ctx.FormString("return_uri")

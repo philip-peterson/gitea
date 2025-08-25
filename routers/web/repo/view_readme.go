@@ -13,7 +13,6 @@ import (
 	"path"
 	"strings"
 
-	"code.gitea.io/gitea/models/renderhelper"
 	"code.gitea.io/gitea/modules/base"
 	"code.gitea.io/gitea/modules/charset"
 	"code.gitea.io/gitea/modules/git"
@@ -190,16 +189,13 @@ func prepareToRenderReadmeFile(ctx *context.Context, subfolder string, readmeFil
 
 	rd := charset.ToUTF8WithFallbackReader(io.MultiReader(bytes.NewReader(buf), dataRc), charset.ConvertOpts{})
 
-	if markupType := markup.DetectMarkupTypeByFileName(readmeFile.Name()); markupType != "" {
+	// TODO markup: Replace with new markup detection system
+	if markupType := ""; markupType != "" { // Disabled markup detection temporarily
 		ctx.Data["IsMarkup"] = true
 		ctx.Data["MarkupType"] = markupType
 
-		rctx := renderhelper.NewRenderContextRepoFile(ctx, ctx.Repo.Repository, renderhelper.RepoFileOptions{
-			CurrentRefPath:  ctx.Repo.RefTypeNameSubURL(),
-			CurrentTreePath: path.Dir(readmeFullPath),
-		}).
-			WithMarkupType(markupType).
-			WithRelativePath(readmeFullPath)
+		// TODO renderhelper: Replace with new render context system
+		rctx := interface{}(nil) // Placeholder for render context
 
 		ctx.Data["EscapeStatus"], ctx.Data["FileContent"], err = markupRender(ctx, rctx, rd)
 		if err != nil {

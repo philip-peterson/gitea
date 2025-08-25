@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 
 	activities_model "code.gitea.io/gitea/models/activities"
 	"code.gitea.io/gitea/models/db"
@@ -20,7 +19,6 @@ import (
 	access_model "code.gitea.io/gitea/models/perm/access"
 	project_model "code.gitea.io/gitea/models/project"
 	pull_model "code.gitea.io/gitea/models/pull"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
@@ -294,7 +292,8 @@ func handleViewIssueRedirectExternal(ctx *context.Context) {
 		// If issue was requested we check if repo has external tracker and redirect
 		extIssueUnit, err := ctx.Repo.Repository.GetUnit(ctx, unit.TypeExternalTracker)
 		if err == nil && extIssueUnit != nil {
-			if extIssueUnit.ExternalTrackerConfig().ExternalTrackerStyle == markup.IssueNameStyleNumeric || extIssueUnit.ExternalTrackerConfig().ExternalTrackerStyle == "" {
+			// TODO markup: Replace with new markup rendering system - using "numeric" as default
+			if extIssueUnit.ExternalTrackerConfig().ExternalTrackerStyle == "numeric" || extIssueUnit.ExternalTrackerConfig().ExternalTrackerStyle == "" {
 				metas := ctx.Repo.Repository.ComposeCommentMetas(ctx)
 				metas["index"] = ctx.PathParam("index")
 				res, err := vars.Expand(extIssueUnit.ExternalTrackerConfig().ExternalTrackerFormat, metas)
@@ -629,14 +628,8 @@ func prepareIssueViewCommentsAndSidebarParticipants(ctx *context.Context, issue 
 		comment.Issue = issue
 
 		if comment.Type == issues_model.CommentTypeComment || comment.Type == issues_model.CommentTypeReview {
-			rctx := renderhelper.NewRenderContextRepoComment(ctx, issue.Repo, renderhelper.RepoCommentOptions{
-				FootnoteContextID: strconv.FormatInt(comment.ID, 10),
-			})
-			comment.RenderedContent, err = markdown.RenderString(rctx, comment.Content)
-			if err != nil {
-				ctx.ServerError("RenderString", err)
-				return
-			}
+			// TODO markdown: Replace with new markdown rendering system
+			comment.RenderedContent = template.HTML(template.HTMLEscapeString(comment.Content))
 			// Check tag.
 			role, ok = marked[comment.PosterID]
 			if ok {
@@ -707,14 +700,8 @@ func prepareIssueViewCommentsAndSidebarParticipants(ctx *context.Context, issue 
 				}
 			}
 		} else if comment.Type.HasContentSupport() {
-			rctx := renderhelper.NewRenderContextRepoComment(ctx, issue.Repo, renderhelper.RepoCommentOptions{
-				FootnoteContextID: strconv.FormatInt(comment.ID, 10),
-			})
-			comment.RenderedContent, err = markdown.RenderString(rctx, comment.Content)
-			if err != nil {
-				ctx.ServerError("RenderString", err)
-				return
-			}
+			// TODO markdown: Replace with new markdown rendering system
+			comment.RenderedContent = template.HTML(template.HTMLEscapeString(comment.Content))
 			if err = comment.LoadReview(ctx); err != nil && !issues_model.IsErrReviewNotExist(err) {
 				ctx.ServerError("LoadReview", err)
 				return

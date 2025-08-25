@@ -131,8 +131,10 @@ func InitWebInstalled(ctx context.Context) {
 	mustInitCtx(ctx, archiver.Init)
 
 	highlight.NewContext()
-	external.RegisterRenderers()
-	markup.Init(markup_service.FormalRenderHelperFuncs())
+	// TODO external: Re-enable when external renderers are implemented
+	// external.RegisterRenderers()
+	// TODO markup: Re-enable when new markup system is ready
+	// markup.Init(markup_service.FormalRenderHelperFuncs())
 
 	if setting.EnableSQLite3 {
 		log.Info("SQLite3 support is enabled")

@@ -7,13 +7,11 @@ package user
 import (
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	activities_model "code.gitea.io/gitea/models/activities"
 	"code.gitea.io/gitea/models/db"
 	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/git"
@@ -22,7 +20,6 @@ import (
 	"code.gitea.io/gitea/modules/optional"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
 	"code.gitea.io/gitea/routers/web/feed"
 	"code.gitea.io/gitea/routers/web/org"
 	shared_user "code.gitea.io/gitea/routers/web/shared/user"
@@ -255,14 +252,9 @@ func prepareUserProfileTabData(ctx *context.Context, profileDbRepo *repo_model.R
 		if bytes, err := profileReadme.GetBlobContent(setting.UI.MaxDisplayFileSize); err != nil {
 			log.Error("failed to GetBlobContent: %v", err)
 		} else {
-			rctx := renderhelper.NewRenderContextRepoFile(ctx, profileDbRepo, renderhelper.RepoFileOptions{
-				CurrentRefPath: path.Join("branch", util.PathEscapeSegments(profileDbRepo.DefaultBranch)),
-			})
-			if profileContent, err := markdown.RenderString(rctx, bytes); err != nil {
-				log.Error("failed to RenderString: %v", err)
-			} else {
-				ctx.Data["ProfileReadmeContent"] = profileContent
-			}
+			// TODO markdown: Replace with new markdown rendering system
+			profileContent := string(bytes) // Temporary: display raw content
+			ctx.Data["ProfileReadmeContent"] = profileContent
 		}
 	case "organizations":
 		orgs, count, err := db.FindAndCount[organization.Organization](ctx, organization.FindOrgOptions{

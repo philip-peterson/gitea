@@ -6,6 +6,7 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strings"
 
@@ -13,7 +14,6 @@ import (
 	issues_model "code.gitea.io/gitea/models/issues"
 	"code.gitea.io/gitea/models/perm"
 	project_model "code.gitea.io/gitea/models/project"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/models/unit"
 	"code.gitea.io/gitea/modules/json"
@@ -95,12 +95,8 @@ func Projects(ctx *context.Context) {
 	}
 
 	for i := range projects {
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, repo)
-		projects[i].RenderedContent, err = markdown.RenderString(rctx, projects[i].Description)
-		if err != nil {
-			ctx.ServerError("RenderString", err)
-			return
-		}
+		// TODO markdown: Replace with new markdown rendering system
+		projects[i].RenderedContent = template.HTML(template.HTMLEscapeString(projects[i].Description))
 	}
 
 	ctx.Data["Projects"] = projects
@@ -408,12 +404,8 @@ func ViewProject(ctx *context.Context) {
 	ctx.Data["Assignees"] = shared_user.MakeSelfOnTop(ctx.Doer, assigneeUsers)
 	ctx.Data["AssigneeID"] = assigneeID
 
-	rctx := renderhelper.NewRenderContextRepoComment(ctx, ctx.Repo.Repository)
-	project.RenderedContent, err = markdown.RenderString(rctx, project.Description)
-	if err != nil {
-		ctx.ServerError("RenderString", err)
-		return
-	}
+	// TODO markdown: Replace with new markdown rendering system
+	project.RenderedContent = template.HTML(template.HTMLEscapeString(project.Description))
 
 	ctx.Data["Title"] = project.Title
 	ctx.Data["IsProjectsPage"] = true

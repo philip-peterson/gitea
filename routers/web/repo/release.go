@@ -7,13 +7,12 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"code.gitea.io/gitea/models/db"
 	git_model "code.gitea.io/gitea/models/git"
-	"code.gitea.io/gitea/models/renderhelper"
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
@@ -114,13 +113,8 @@ func getReleaseInfos(ctx *context.Context, opts *repo_model.FindReleasesOptions)
 			cacheUsers[r.PublisherID] = r.Publisher
 		}
 
-		rctx := renderhelper.NewRenderContextRepoComment(ctx, r.Repo, renderhelper.RepoCommentOptions{
-			FootnoteContextID: strconv.FormatInt(r.ID, 10),
-		})
-		r.RenderedNote, err = markdown.RenderString(rctx, r.Note)
-		if err != nil {
-			return nil, err
-		}
+		// TODO markdown: Replace with new markdown rendering system
+		r.RenderedNote = template.HTML(template.HTMLEscapeString(r.Note))
 
 		if !r.IsDraft {
 			if err := calReleaseNumCommitsBehind(ctx.Repo, r, countCache); err != nil {
