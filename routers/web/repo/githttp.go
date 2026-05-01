@@ -7,6 +7,7 @@ package repo
 import (
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -366,6 +367,30 @@ func prepareGitCmdWithAllowedService(service string, allowedServices []string) *
 	}
 }
 
+type countingWriter struct {
+	w       io.Writer
+	written int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.written += int64(n)
+	return n, err
+}
+
+// writeSidebandError writes a git sideband-3 (error) packet so the client receives
+// a meaningful error message instead of "unexpected disconnect while reading sideband packet"
+// when the server-side git process exits without producing any output.
+func writeSidebandError(w io.Writer, msg string) {
+	msg = strings.TrimRight(msg, "\n")
+	if msg == "" {
+		msg = "internal server error"
+	}
+	data := "\x03" + msg + "\n"
+	_, _ = fmt.Fprintf(w, "%04x%s", len(data)+4, data)
+	_, _ = io.WriteString(w, "0000")
+}
+
 func serviceRPC(ctx *context.Context, service string) {
 	defer ctx.Req.Body.Close()
 	h := httpBase(ctx, "git-"+service)
@@ -411,13 +436,17 @@ func serviceRPC(ctx *context.Context, service string) {
 		h.environ = append(h.environ, "GIT_PROTOCOL="+protocol)
 	}
 
+	cw := &countingWriter{w: ctx.Resp}
 	if err := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
 		WithEnv(append(os.Environ(), h.environ...)).
 		WithStdinCopy(reqBody).
-		WithStdoutCopy(ctx.Resp),
+		WithStdoutCopy(cw),
 	); err != nil {
 		if !gitcmd.IsErrorCanceledOrKilled(err) {
 			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+			if cw.written == 0 {
+				writeSidebandError(ctx.Resp, err.Stderr())
+			}
 		}
 	}
 }
