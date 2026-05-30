@@ -62,6 +62,10 @@ var (
 		AllowForkWithoutMaximumLimit            bool
 		AllowForkIntoSameOwner                  bool
 
+		// MaxPushBlobSize is the maximum allowed uncompressed size in bytes for any
+		// non-delta blob object in a push. 0 disables the check.
+		MaxPushBlobSize int64
+
 		// StreamArchives makes Gitea stream git archive files to the client directly instead of creating an archive first.
 		// Ideally all users should use this streaming method. However, at the moment we don't know whether there are
 		// any users who still need the old behavior, so we introduce this option, intentionally not documenting it.

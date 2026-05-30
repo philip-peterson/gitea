@@ -7,6 +7,7 @@ package repo
 import (
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -24,6 +25,7 @@ import (
 	"gitea.dev/models/unit"
 	"gitea.dev/modules/git"
 	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitprotocol"
 	"gitea.dev/modules/gitrepo"
 	"gitea.dev/modules/log"
 	repo_module "gitea.dev/modules/repository"
@@ -409,6 +411,30 @@ func serviceRPC(ctx *context.Context, service string) {
 
 	if protocol := ctx.Req.Header.Get("Git-Protocol"); protocol != "" && safeGitProtocolHeader.MatchString(protocol) {
 		h.environ = append(h.environ, "GIT_PROTOCOL="+protocol)
+	}
+
+	if service == ServiceTypeReceivePack && setting.Repository.MaxPushBlobSize > 0 {
+		maxSize := setting.Repository.MaxPushBlobSize
+		runGitCmd := func(stdin io.Reader, stdout io.Writer) error {
+			return gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
+				WithEnv(append(os.Environ(), h.environ...)).
+				WithStdinCopy(stdin).
+				WithStdoutCopy(stdout),
+			)
+		}
+		if err := gitprotocol.ReceivePack(reqBody, ctx.Resp,
+			func(hdr gitprotocol.ObjectHeader) error {
+				if hdr.Type == gitprotocol.ObjBlob && hdr.UnpackedSize > maxSize {
+					return fmt.Errorf("blob of %d bytes exceeds the maximum allowed size of %d bytes",
+						hdr.UnpackedSize, maxSize)
+				}
+				return nil
+			},
+			runGitCmd,
+		); err != nil && !gitcmd.IsErrorCanceledOrKilled(err) {
+			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+		}
+		return
 	}
 
 	if err := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
