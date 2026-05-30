@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -25,6 +26,7 @@ import (
 	"code.gitea.io/gitea/models/unit"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/git/gitcmd"
+	"code.gitea.io/gitea/modules/gitprotocol"
 	"code.gitea.io/gitea/modules/gitrepo"
 	"code.gitea.io/gitea/modules/log"
 	repo_module "code.gitea.io/gitea/modules/repository"
@@ -434,16 +436,38 @@ func serviceRPC(ctx *context.Context, h *serviceHandler, service string) {
 		h.environ = append(h.environ, "GIT_PROTOCOL="+protocol)
 	}
 
-	var stderr bytes.Buffer
-	if err := gitrepo.RunCmd(ctx, h.getStorageRepo(), cmd.AddArguments("--stateless-rpc", ".").
-		WithEnv(append(os.Environ(), h.environ...)).
-		WithStderr(&stderr).
-		WithStdin(reqBody).
-		WithStdout(ctx.Resp).
-		WithUseContextTimeout(true)); err != nil {
-		if !git.IsErrCanceledOrKilled(err) {
-			log.Error("Fail to serve RPC(%s) in %s: %v - %s", service, h.getStorageRepo().RelativePath(), err, stderr.String())
+	runGitCmd := func(stdin io.Reader, stdout io.Writer) error {
+		var stderr bytes.Buffer
+		gitErr := gitrepo.RunCmd(ctx, h.getStorageRepo(), cmd.AddArguments("--stateless-rpc", ".").
+			WithEnv(append(os.Environ(), h.environ...)).
+			WithStderr(&stderr).
+			WithStdin(stdin).
+			WithStdout(stdout).
+			WithUseContextTimeout(true))
+		if gitErr != nil && !git.IsErrCanceledOrKilled(gitErr) {
+			log.Error("Fail to serve RPC(%s) in %s: %v - %s", service, h.getStorageRepo().RelativePath(), gitErr, stderr.String())
 		}
+		return gitErr
+	}
+
+	if service == ServiceTypeReceivePack && setting.Repository.MaxPushBlobSize > 0 {
+		maxSize := setting.Repository.MaxPushBlobSize
+		if err := gitprotocol.ReceivePack(reqBody, ctx.Resp,
+			func(hdr gitprotocol.ObjectHeader) error {
+				if hdr.Type == gitprotocol.ObjBlob && hdr.UnpackedSize > maxSize {
+					return fmt.Errorf("blob of %d bytes exceeds the maximum allowed size of %d bytes",
+						hdr.UnpackedSize, maxSize)
+				}
+				return nil
+			},
+			runGitCmd,
+		); err != nil && !git.IsErrCanceledOrKilled(err) {
+			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+		}
+		return
+	}
+
+	if err := runGitCmd(reqBody, ctx.Resp); err != nil {
 		return
 	}
 }
