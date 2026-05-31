@@ -17,13 +17,6 @@ import (
 	"strings"
 )
 
-// RefUpdate represents one ref being created, updated, or deleted in a push.
-type RefUpdate struct {
-	OldOID string
-	NewOID string
-	Ref    string
-}
-
 // InterceptFunc is called for each object header in the incoming packfile.
 // Returning a non-nil error causes the entire push to be rejected; the error
 // message is forwarded to the git client.
@@ -32,24 +25,12 @@ type InterceptFunc func(ObjectHeader) error
 // ReceivePack intercepts a git-receive-pack HTTP request body, parsing the
 // packfile and calling fn for each object header before forwarding to git.
 //
-// Contract for callers:
-//   - If ReceivePack returns nil, it has either written a complete error
-//     response to w (rejection or early failure) or successfully handed off
-//     to runGit.
-//   - If ReceivePack returns a non-nil error, it is a setup failure before
-//     any response bytes were written (e.g. temp file creation). The caller
-//     should log it and the client will see an incomplete/failed response.
+// If the interceptor decides to reject the push, it writes a well-formed
+// receive-pack error response to w and returns nil. Otherwise it seeks the
+// buffered data back to the beginning and invokes runGit.
 //
-// On rejection (fn returns error): drains r, writes a valid receive-pack error
-// response to w using the collected ref updates, and returns nil.
-//
-// On early protocol/setup errors after we have seen the first pkt-line:
-// we make a best-effort attempt to write a proper "unpack error" response
-// before returning nil, so the git client sees a clean rejection instead of
-// a 200 with truncated body.
-//
-// On success: seeks the buffered request back to the start and calls runGit.
-// The error from runGit (if any) is returned to the caller.
+// Any error returned (other than from runGit) indicates a low-level failure
+// before we could even start parsing (e.g. temp file creation).
 func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Reader, io.Writer) error) error {
 	tmp, err := os.CreateTemp("", "gitea-pack-intercept-*")
 	if err != nil {
@@ -60,12 +41,10 @@ func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Read
 
 	tee := io.TeeReader(r, tmp)
 
-	refUpdates, useSideband, err := readRefUpdates(tee)
+	useSideband, err := readReceivePackHeader(tee)
 	if err != nil {
-		// Protocol error very early — best effort response with no ref list.
-		// Use sideband=false (conservative; client will still usually understand
-		// a bare "unpack error ..." pkt-line sequence).
-		_ = writeErrorResponse(w, nil, "protocol error reading ref updates: "+err.Error(), false)
+		// Best-effort error response for early protocol garbage.
+		_ = writeErrorResponse(w, "protocol error: "+err.Error(), false)
 		_, _ = io.Copy(io.Discard, r)
 		return nil
 	}
@@ -81,7 +60,7 @@ func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Read
 
 	if rejectErr != nil {
 		_, _ = io.Copy(io.Discard, r)
-		return writeErrorResponse(w, refUpdates, rejectErr.Error(), useSideband)
+		return writeErrorResponse(w, rejectErr.Error(), useSideband)
 	}
 
 	// Drain any bytes that remain after the last object + trailing checksum.
@@ -92,38 +71,28 @@ func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Read
 	}
 
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		// We have the ref list; give the client a proper error instead of
-		// letting the HTTP handler just log and return a broken response.
-		_ = writeErrorResponse(w, refUpdates, "internal error buffering push data: "+err.Error(), useSideband)
+		_ = writeErrorResponse(w, "internal error buffering push data: "+err.Error(), useSideband)
 		return nil
 	}
 	return runGit(tmp, w)
 }
 
-// readRefUpdates reads the pkt-line ref-update commands (and optional push-options
-// section) until the PACK data begins.
+// readReceivePackHeader reads the initial pkt-lines of a receive-pack request
+// (ref updates + optional push-options section) until the PACK data begins.
+// It returns whether side-band-64k was negotiated (needed only for error responses).
 //
-// The first pkt-line carries NUL-separated capability tokens after the first ref
-// update. We extract "side-band-64k"/"side-band" (for error response framing) and
-// "push-options" (so we know to consume the extra section after the first flush).
-//
-// When push-options was negotiated, the client sends after the first flush pkt:
-//   one or more "push-option <value>" pkt-lines
-//   a second flush pkt
-// Then the raw PACK data follows.
-//
-// We consume (and ignore) the push-option lines so that StreamPackfile sees
-// the "PACK" magic as the next bytes.
-func readRefUpdates(r io.Reader) ([]RefUpdate, bool, error) {
-	var updates []RefUpdate
-	useSideband := false
+// When push-options was negotiated, the client sends after the first flush:
+//   zero or more "push-option ..." pkt-lines
+//   another flush
+// We simply consume this section so StreamPackfile sees the real PACK magic.
+func readReceivePackHeader(r io.Reader) (useSideband bool, err error) {
 	hasPushOptions := false
 	first := true
 
 	for {
 		data, isFlush, err := ReadPktLine(r)
 		if err != nil {
-			return nil, false, err
+			return false, err
 		}
 		if isFlush {
 			break
@@ -133,9 +102,7 @@ func readRefUpdates(r io.Reader) ([]RefUpdate, bool, error) {
 		if first {
 			first = false
 			if nul := strings.IndexByte(line, 0); nul >= 0 {
-				caps := line[nul+1:]
-				line = line[:nul]
-				for _, cap := range strings.Fields(caps) {
+				for _, cap := range strings.Fields(line[nul+1:]) {
 					switch cap {
 					case "side-band-64k", "side-band":
 						useSideband = true
@@ -145,61 +112,42 @@ func readRefUpdates(r io.Reader) ([]RefUpdate, bool, error) {
 				}
 			}
 		}
-
-		fields := strings.SplitN(line, " ", 3)
-		if len(fields) != 3 {
-			return nil, false, fmt.Errorf("malformed ref-update line: %q", line)
-		}
-		updates = append(updates, RefUpdate{OldOID: fields[0], NewOID: fields[1], Ref: fields[2]})
+		// We no longer collect RefUpdate lines; a simple "unpack error" is
+		// sufficient for the size-limit use case.
 	}
 
-	// If the client negotiated push-options, there is a second section of
-	// "push-option ..." lines terminated by another flush before the PACK data.
 	if hasPushOptions {
+		// Consume the push-options section (terminated by another flush).
 		for {
 			_, isFlush, err := ReadPktLine(r)
 			if err != nil {
-				return nil, false, err
+				return false, err
 			}
 			if isFlush {
 				break
 			}
-			// discard the push-option value; we don't need it for size limiting
 		}
 	}
-
-	return updates, useSideband, nil
+	return useSideband, nil
 }
 
-// writeErrorResponse writes a receive-pack unpack-status error to w.
+// writeErrorResponse writes a minimal but valid receive-pack error response.
 //
-// When useSideband is true each inner report-status pkt-line is wrapped in a
-// sideband band-1 packet, exactly as git receive-pack does when side-band-64k
-// was negotiated: PKT-LINE(\x01 <inner-pkt-line>).
-func writeErrorResponse(w io.Writer, refs []RefUpdate, msg string, useSideband bool) error {
-	lines := make([][]byte, 0, len(refs)+1)
-	lines = append(lines, []byte("unpack error "+msg+"\n"))
-	for _, r := range refs {
-		lines = append(lines, []byte("ng "+r.Ref+" "+msg+"\n"))
-	}
+// We deliberately emit only the "unpack error" line. Emitting per-ref "ng"
+// lines added significant complexity and was the source of several bugs for
+// very little practical benefit when the goal is simply "reject big blobs".
+func writeErrorResponse(w io.Writer, msg string, useSideband bool) error {
+	line := []byte("unpack error " + msg + "\n")
 
 	if useSideband {
-		for _, line := range lines {
-			// Each status line is sent as a sideband-1 pkt-line:
-			//   PKT-LINE( \x01 <inner-pkt-line-of-status> )
-			inner := fmt.Sprintf("%04x", len(line)+4) + string(line)
-			if err := WritePktLine(w, append([]byte{0x01}, inner...)); err != nil {
-				return err
-			}
+		// PKT-LINE( \x01 <inner-pkt-line> )
+		inner := fmt.Sprintf("%04x", len(line)+4) + string(line)
+		if err := WritePktLine(w, append([]byte{0x01}, inner...)); err != nil {
+			return err
 		}
-		// The final flush (0000) is sent bare, not sideband-wrapped.
-		// This matches observed behavior of git receive-pack when emitting
-		// a report-status error over side-band-64k.
 	} else {
-		for _, line := range lines {
-			if err := WritePktLine(w, line); err != nil {
-				return err
-			}
+		if err := WritePktLine(w, line); err != nil {
+			return err
 		}
 	}
 	return WriteFlushPkt(w)
