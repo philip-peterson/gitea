@@ -21,11 +21,14 @@ const (
 )
 
 // ObjectHeader holds the type and uncompressed size parsed from a packfile object header.
-// For delta objects (ObjOfsDelta, ObjRefDelta), UnpackedSize is the size of the delta
-// instructions, not the final reconstructed object size.
+//
+// WARNING: For delta objects (ObjOfsDelta, ObjRefDelta), UnpackedSize is the size
+// of the *delta instructions*, not the final reconstructed object size. Callers
+// that enforce size limits (e.g. MAX_PUSH_BLOB_SIZE) must treat any delta object
+// as "size unknown" and usually reject the push when a limit is active.
 type ObjectHeader struct {
 	Type         int
-	UnpackedSize int64
+	UnpackedSize uint64
 	RefDeltaBase [20]byte // only populated for ObjRefDelta
 }
 
@@ -84,7 +87,7 @@ func readObjectHeader(r io.Reader) (ObjectHeader, error) {
 	}
 	b := buf[0]
 	h.Type = int((b >> 4) & 0x7)
-	size := int64(b & 0xf)
+	size := uint64(b & 0xf)
 	shift := uint(4)
 
 	for b&0x80 != 0 {
@@ -92,7 +95,7 @@ func readObjectHeader(r io.Reader) (ObjectHeader, error) {
 			return h, err
 		}
 		b = buf[0]
-		size |= int64(b&0x7f) << shift
+		size |= uint64(b&0x7f) << shift
 		shift += 7
 	}
 	h.UnpackedSize = size

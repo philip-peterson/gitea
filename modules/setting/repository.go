@@ -55,7 +55,9 @@ var (
 		AllowForkIntoSameOwner                  bool
 
 		// MaxPushBlobSize is the maximum allowed uncompressed size in bytes for any
-		// non-delta blob object in a push. 0 disables the check.
+		// blob object in a push. When > 0, any delta-compressed object (ObjOfsDelta
+		// or ObjRefDelta) causes the entire push to be rejected because the parser
+		// cannot determine the final expanded size. 0 disables the check.
 		MaxPushBlobSize int64
 
 		// StreamArchives makes Gitea stream git archive files to the client directly instead of creating an archive first.
@@ -160,6 +162,7 @@ var (
 		DefaultPrivate:                          RepoCreatingLastUserVisibility,
 		DefaultPushCreatePrivate:                true,
 		MaxCreationLimit:                        -1,
+		MaxPushBlobSize:                         0,
 		PreferredLicenses:                       []string{"Apache License 2.0", "MIT License"},
 		DisableHTTPGit:                          false,
 		AccessControlAllowOrigin:                "",
@@ -287,6 +290,7 @@ func loadRepositoryFrom(rootCfg ConfigProvider) {
 	Repository.UseCompatSSHURI = sec.Key("USE_COMPAT_SSH_URI").MustBool()
 	Repository.GoGetCloneURLProtocol = sec.Key("GO_GET_CLONE_URL_PROTOCOL").MustString("https")
 	Repository.MaxCreationLimit = sec.Key("MAX_CREATION_LIMIT").MustInt(-1)
+	Repository.MaxPushBlobSize = sec.Key("MAX_PUSH_BLOB_SIZE").MustInt64(0)
 	Repository.DefaultBranch = sec.Key("DEFAULT_BRANCH").MustString(Repository.DefaultBranch)
 	RepoRootPath = sec.Key("ROOT").MustString(filepath.Join(AppDataPath, "gitea-repositories"))
 	if !filepath.IsAbs(RepoRootPath) {
