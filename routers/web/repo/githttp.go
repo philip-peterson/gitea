@@ -424,7 +424,14 @@ func serviceRPC(ctx *context.Context, service string) {
 		}
 		if err := gitprotocol.ReceivePack(reqBody, ctx.Resp,
 			func(hdr gitprotocol.ObjectHeader) error {
-				if hdr.Type == gitprotocol.ObjBlob && hdr.UnpackedSize > maxSize {
+				// Delta objects report the size of the *delta instructions*, not the
+				// final expanded object. When a blob size limit is active we must
+				// reject the whole push — otherwise a malicious or accidental huge
+				// blob can be pushed hidden inside a tiny delta.
+				if hdr.Type == gitprotocol.ObjOfsDelta || hdr.Type == gitprotocol.ObjRefDelta {
+					return fmt.Errorf("push contains delta objects; MAX_PUSH_BLOB_SIZE is active and cannot measure the final size of delta-compressed blobs (rewrite history without deltas or disable the limit)")
+				}
+				if hdr.Type == gitprotocol.ObjBlob && hdr.UnpackedSize > uint64(maxSize) {
 					return fmt.Errorf("blob of %d bytes exceeds the maximum allowed size of %d bytes",
 						hdr.UnpackedSize, maxSize)
 				}
