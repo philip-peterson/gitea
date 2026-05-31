@@ -368,6 +368,18 @@ func prepareGitCmdWithAllowedService(service string, allowedServices []string) *
 	}
 }
 
+// byteCountWriter wraps an io.Writer and counts bytes successfully written.
+type byteCountWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *byteCountWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
 func serviceRPC(ctx *context.Context, service string) {
 	defer ctx.Req.Body.Close()
 	h := httpBase(ctx, "git-"+service)
@@ -415,6 +427,7 @@ func serviceRPC(ctx *context.Context, service string) {
 
 	if service == ServiceTypeReceivePack && setting.Repository.MaxPushBlobSize > 0 {
 		maxSize := setting.Repository.MaxPushBlobSize
+		cw := &byteCountWriter{w: ctx.Resp}
 		runGitCmd := func(stdin io.Reader, stdout io.Writer) error {
 			return gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
 				WithEnv(append(os.Environ(), h.environ...)).
@@ -437,20 +450,53 @@ func serviceRPC(ctx *context.Context, service string) {
 				}
 				return nil
 			},
-			runGitCmd,
+			func(stdin io.Reader, _ io.Writer) error {
+				// Route git stdout through the counter so we can inject a visible
+				// error if runGit fails before writing anything.
+				return runGitCmd(stdin, cw)
+			},
 		); err != nil && !gitcmd.IsErrorCanceledOrKilled(err) {
 			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
 		}
+		if cw.n == 0 {
+			// ReceivePack returns nil after writing its own rejection/early error.
+			// Only inject when we got a runGit error and still wrote zero bytes.
+			msg := ""
+			if rse, ok := err.(gitcmd.RunStdError); ok && rse.Stderr() != "" {
+				msg = rse.Stderr()
+			} else if err != nil {
+				msg = err.Error()
+			}
+			if msg != "" {
+				_ = gitprotocol.WriteReceivePackError(ctx.Resp, "git receive-pack: "+msg, true)
+			}
+		}
 		return
+	}
+
+	// Wrap stdout for receive-pack so zero-byte failures can get an injected
+	// error response (avoids "unexpected disconnect" for the client).
+	stdout := ctx.Resp
+	var cw *byteCountWriter
+	if service == ServiceTypeReceivePack {
+		cw = &byteCountWriter{w: ctx.Resp}
+		stdout = cw
 	}
 
 	if err := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
 		WithEnv(append(os.Environ(), h.environ...)).
 		WithStdinCopy(reqBody).
-		WithStdoutCopy(ctx.Resp),
+		WithStdoutCopy(stdout),
 	); err != nil {
 		if !gitcmd.IsErrorCanceledOrKilled(err) {
 			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+		}
+		if service == ServiceTypeReceivePack && cw != nil && cw.n == 0 {
+			msg := err.Error()
+			if rse, ok := err.(gitcmd.RunStdError); ok && rse.Stderr() != "" {
+				msg = rse.Stderr()
+			}
+			_ = gitprotocol.WriteReceivePackError(ctx.Resp, "git receive-pack: "+msg, true)
 		}
 	}
 }
