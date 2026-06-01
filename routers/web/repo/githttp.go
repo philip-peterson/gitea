@@ -371,14 +371,15 @@ func prepareGitCmdWithAllowedService(service string, allowedServices []string) *
 }
 
 // byteCountWriter wraps an io.Writer and counts bytes successfully written.
-// It is used on the receive-pack response path so we can detect zero-byte
-// failures and inject a proper error pkt-line afterward.
+// It is used on the receive-pack response path (both the MaxPushBlobSize
+// interceptor path and the normal path) so we can (optionally) detect zero-byte
+// failures and so that every write from the git child is immediately flushed.
 //
-// It also implements http.Flusher so that timely Flush calls from git (or the
+// It implements http.Flusher so that timely Flush calls from git (or the
 // exec copy goroutine) are propagated. Without this, status lines or early
 // error packets can stay buffered in the HTTP chunked writer, causing git
-// clients to see "hung up" or "bad line length" because they don't receive
-// data promptly.
+// clients to see "hung up" or "bad line length" while reading the sideband
+// after sending a pack.
 type byteCountWriter struct {
 	w io.Writer
 	n int64
@@ -387,6 +388,14 @@ type byteCountWriter struct {
 func (c *byteCountWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
+	// Auto-flush after every write. The exec copy goroutine that feeds the
+	// git child's stdout only calls Write; it never calls Flush(). Without
+	// this, small sideband status packets ("unpack ok", "ok refs/...", error
+	// lines) stay buffered in Go's chunked writer and the client sees
+	// "unexpected disconnect while reading sideband packet".
+	if f, ok := c.w.(http.Flusher); ok {
+		f.Flush()
+	}
 	return n, err
 }
 
@@ -395,6 +404,30 @@ func (c *byteCountWriter) Flush() {
 	if f, ok := c.w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// bodyCounter is a temporary diagnostic wrapper (remove once the receive-pack
+// body delivery vs response hangup issue is fully understood).
+type bodyCounter struct {
+	r     io.Reader
+	label string
+	n     int64
+}
+
+func (b *bodyCounter) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.n += int64(n)
+	if err != nil {
+		log.Debug("bodyCounter[%s]: total=%d finalErr=%v", b.label, b.n, err)
+	}
+	return n, err
+}
+
+func (b *bodyCounter) Close() error {
+	if c, ok := b.r.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
 
 func serviceRPC(ctx *context.Context, service string) {
@@ -429,6 +462,11 @@ func serviceRPC(ctx *context.Context, service string) {
 	ctx.Resp.Header().Set("Content-Encoding", "identity")
 	ctx.Resp.WriteHeader(http.StatusOK)
 
+	// Note: we do NOT flush headers here. For the Apple Git probe POST (body exactly "0000")
+	// the child writes 0 bytes; flushing early can produce an odd empty chunked response
+	// that makes the client drop the keep-alive conn while the git process is still attached.
+	// Headers + first body bytes will be sent on the first Write from the child (or on
+	// handler return for the probe case). The wrapper below ensures those writes are flushed.
 	reqBody := ctx.Req.Body
 
 	// Handle GZIP.
@@ -506,7 +544,17 @@ func serviceRPC(ctx *context.Context, service string) {
 	}
 
 	// Normal path (no MaxPushBlobSize limit active)
-	stdout := ctx.Resp
+	// Use byteCountWriter (the n field is ignored here) so that writes from
+	// the git child are flushed promptly. This is required for the sideband
+	// status packets after the client finishes sending the pack.
+	stdout := &byteCountWriter{w: ctx.Resp}
+
+	// Temporary diagnostic: count how much of the request body actually reaches
+	// the git child on receive-pack. This helps distinguish "client closed while
+	// we were still reading the pack" vs "body fully received, hangup only on status write".
+	if service == ServiceTypeReceivePack {
+		reqBody = &bodyCounter{r: reqBody, label: "normal-receive-pack"}
+	}
 
 	start := time.Now()
 	log.Debug("serviceRPC: normal path, starting command: %s", cmd.LogString())
