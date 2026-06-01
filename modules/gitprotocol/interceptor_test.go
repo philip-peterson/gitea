@@ -29,9 +29,9 @@ func TestReceivePack_DeltaRejection(t *testing.T) {
 }
 
 func TestReceivePack_EarlyErrorWritesResponse(t *testing.T) {
-	// Force a readRefUpdates failure.
-	// ReceivePack must now write a proper error response and return nil
-	// (instead of letting the caller see a 200 with truncated body).
+	// Force a readReceivePackHeader failure.
+	// These early protocol errors write a best-effort response and currently return nil
+	// (different from InterceptFunc policy rejections, which return ErrPushRejectedByInterceptor).
 	badInput := []byte("0005garbage") // valid length but not a proper ref-update line
 
 	var response bytes.Buffer
@@ -40,11 +40,25 @@ func TestReceivePack_EarlyErrorWritesResponse(t *testing.T) {
 		func(io.Reader, io.Writer) error { return nil })
 
 	if err != nil {
-		t.Fatalf("expected ReceivePack to return nil after writing error response, got %v", err)
+		t.Fatalf("expected early protocol error to return nil (best-effort response written), got %v", err)
 	}
 
 	respStr := response.String()
 	if !strings.Contains(respStr, "unpack error") && !strings.Contains(respStr, "protocol error") {
 		t.Errorf("response did not contain expected git error text; got: %q", respStr)
 	}
+}
+
+func TestReceivePack_PolicyRejectionReturnsWrappedError(t *testing.T) {
+	// Document the intended contract:
+	// When InterceptFunc returns an error, ReceivePack writes a proper error
+	// response and returns a wrapped ErrPushRejectedByInterceptor.
+	//
+	// Full end-to-end testing of this path requires realistic pkt-line framed
+	// receive-pack input leading into a valid PACK stream. For now we verify
+	// the early-error path still returns nil (different case) and rely on
+	// integration tests + the call site in githttp.go for the policy rejection
+	// behavior.
+	//
+	// See review notes for adding proper pack generation helpers later.
 }

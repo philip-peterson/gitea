@@ -11,11 +11,17 @@
 package gitprotocol
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 )
+
+// ErrPushRejectedByInterceptor is returned by ReceivePack when the InterceptFunc
+// rejected the push. In this case a well-formed git receive-pack error response
+// has already been written to the client writer.
+var ErrPushRejectedByInterceptor = errors.New("push rejected by interceptor")
 
 // InterceptFunc is called for each object header in the incoming packfile.
 // Returning a non-nil error causes the entire push to be rejected; the error
@@ -25,12 +31,17 @@ type InterceptFunc func(ObjectHeader) error
 // ReceivePack intercepts a git-receive-pack HTTP request body, parsing the
 // packfile and calling fn for each object header before forwarding to git.
 //
-// If the interceptor decides to reject the push, it writes a well-formed
-// receive-pack error response to w and returns nil. Otherwise it seeks the
-// buffered data back to the beginning and invokes runGit.
+// Behavior:
+//   - On success: seeks the buffered data and calls runGit. Returns whatever
+//     runGit returns (usually nil or a git-level error).
+//   - On InterceptFunc rejection: writes a well-formed receive-pack error
+//     response to w and returns a wrapped ErrPushRejectedByInterceptor.
+//   - On early protocol or internal errors: best-effort error response is
+//     written when possible; a non-wrapped error may be returned for truly
+//     low-level failures (temp file creation, etc.).
 //
-// Any error returned (other than from runGit) indicates a low-level failure
-// before we could even start parsing (e.g. temp file creation).
+// This design lets callers distinguish policy rejections (for logging/metrics)
+// from other outcomes.
 func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Reader, io.Writer) error) error {
 	tmp, err := os.CreateTemp("", "gitea-pack-intercept-*")
 	if err != nil {
@@ -60,7 +71,8 @@ func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Read
 
 	if rejectErr != nil {
 		_, _ = io.Copy(io.Discard, r)
-		return writeErrorResponse(w, rejectErr.Error(), useSideband)
+		_ = writeErrorResponse(w, rejectErr.Error(), useSideband)
+		return fmt.Errorf("%w: %v", ErrPushRejectedByInterceptor, rejectErr)
 	}
 
 	// Drain any bytes that remain after the last object + trailing checksum.

@@ -291,6 +291,9 @@ func loadRepositoryFrom(rootCfg ConfigProvider) {
 	Repository.GoGetCloneURLProtocol = sec.Key("GO_GET_CLONE_URL_PROTOCOL").MustString("https")
 	Repository.MaxCreationLimit = sec.Key("MAX_CREATION_LIMIT").MustInt(-1)
 	Repository.MaxPushBlobSize = sec.Key("MAX_PUSH_BLOB_SIZE").MustInt64(0)
+	if Repository.MaxPushBlobSize > 0 {
+		log.Info("Repository push blob size limit is active: MAX_PUSH_BLOB_SIZE=%d (note: currently only affects HTTP Smart Git pushes, not SSH)", Repository.MaxPushBlobSize)
+	}
 	Repository.DefaultBranch = sec.Key("DEFAULT_BRANCH").MustString(Repository.DefaultBranch)
 	RepoRootPath = sec.Key("ROOT").MustString(filepath.Join(AppDataPath, "gitea-repositories"))
 	if !filepath.IsAbs(RepoRootPath) {

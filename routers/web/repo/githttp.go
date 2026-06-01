@@ -7,6 +7,7 @@ package repo
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -468,8 +469,15 @@ func serviceRPC(ctx *context.Context, h *serviceHandler, service string) {
 				return nil
 			},
 			runGitCmd,
-		); err != nil && !git.IsErrCanceledOrKilled(err) {
-			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+		); err != nil {
+			if errors.Is(err, gitprotocol.ErrPushRejectedByInterceptor) {
+				// Policy rejection — client already received a clean error.
+				// This is the place for Warn-level audit logging + future metrics.
+				log.Warn("Push rejected by interceptor: repo=%s pusher=%s err=%v",
+					h.getStorageRepo().RelativePath(), ctx.Doer.Name, err)
+			} else if !git.IsErrCanceledOrKilled(err) {
+				log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+			}
 		}
 		return
 	}
