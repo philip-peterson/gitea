@@ -12,31 +12,33 @@ import (
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	system_model "code.gitea.io/gitea/models/system"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/models/webhook"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/graceful"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/options"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/templates/vars"
+	"gitea.dev/models/db"
+	"gitea.dev/models/organization"
+	"gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	system_model "gitea.dev/models/system"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/models/webhook"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/graceful"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/options"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/templates/vars"
+	"gitea.dev/modules/util"
 )
 
 // CreateRepoOptions contains the create repository options
 type CreateRepoOptions struct {
 	Name             string
 	Description      string
+	Website          string
 	OriginalURL      string
 	GitServiceType   api.GitServiceType
 	Gitignores       string
@@ -85,7 +87,7 @@ func prepareRepoCommit(ctx context.Context, repo *repo_model.Repository, tmpDir 
 	cloneLink := repo.CloneLink(ctx, nil /* no doer so do not generate user-related SSH link */)
 	match := map[string]string{
 		"Name":           repo.Name,
-		"Description":    repo.Description,
+		"Description":    util.NormalizeStringEOL(repo.Description),
 		"CloneURL.SSH":   cloneLink.SSH,
 		"CloneURL.HTTPS": cloneLink.HTTPS,
 		"OwnerName":      repo.OwnerName,
@@ -150,6 +152,16 @@ func initRepository(ctx context.Context, u *user_model.User, repo *repo_model.Re
 		return fmt.Errorf("createDelegateHooks: %w", err)
 	}
 
+	repo.DefaultBranch = util.IfZero(opts.DefaultBranch, setting.Repository.DefaultBranch)
+	repo.DefaultWikiBranch = setting.Repository.DefaultBranch
+	if !opts.AutoInit {
+		repo.IsEmpty = true
+	}
+
+	if err = repo_model.UpdateRepositoryColsNoAutoTime(ctx, repo, "is_empty", "default_branch", "default_wiki_branch"); err != nil {
+		return fmt.Errorf("updateRepository: %w", err)
+	}
+
 	// Initialize repository according to user's choice.
 	if opts.AutoInit {
 		tmpDir, cleanup, err := setting.AppDataTempDir("git-repo-content").MkdirTempRandom("repos-" + repo.Name)
@@ -163,39 +175,22 @@ func initRepository(ctx context.Context, u *user_model.User, repo *repo_model.Re
 		}
 
 		// Apply changes and commit.
-		if err = initRepoCommit(ctx, tmpDir, repo, u, opts.DefaultBranch); err != nil {
+		if err = initRepoCommit(ctx, tmpDir, repo, u); err != nil {
 			return fmt.Errorf("initRepoCommit: %w", err)
 		}
 	}
 
-	// Re-fetch the repository from database before updating it (else it would
-	// override changes that were done earlier with sql)
+	if err = gitrepo.SetDefaultBranch(ctx, repo, repo.DefaultBranch); err != nil {
+		return fmt.Errorf("setDefaultBranch: %w", err)
+	}
+
+	// Re-fetch the repository from database before updating it (keep changes that were done earlier with SQL)
 	if repo, err = repo_model.GetRepositoryByID(ctx, repo.ID); err != nil {
 		return fmt.Errorf("getRepositoryByID: %w", err)
 	}
 
-	if !opts.AutoInit {
-		repo.IsEmpty = true
-	}
-
-	repo.DefaultBranch = setting.Repository.DefaultBranch
-	repo.DefaultWikiBranch = setting.Repository.DefaultBranch
-
-	if len(opts.DefaultBranch) > 0 {
-		repo.DefaultBranch = opts.DefaultBranch
-		if err = gitrepo.SetDefaultBranch(ctx, repo, repo.DefaultBranch); err != nil {
-			return fmt.Errorf("setDefaultBranch: %w", err)
-		}
-
-		if !repo.IsEmpty {
-			if _, err := repo_module.SyncRepoBranches(ctx, repo.ID, u.ID); err != nil {
-				return fmt.Errorf("SyncRepoBranches: %w", err)
-			}
-		}
-	}
-
-	if err = repo_model.UpdateRepositoryColsNoAutoTime(ctx, repo, "is_empty", "default_branch", "default_wiki_branch"); err != nil {
-		return fmt.Errorf("updateRepository: %w", err)
+	if _, err := repo_module.SyncRepoBranches(ctx, repo.ID, u.ID); err != nil {
+		return fmt.Errorf("SyncRepoBranches: %w", err)
 	}
 
 	if err = repo_module.UpdateRepoSize(ctx, repo); err != nil {
@@ -230,6 +225,9 @@ func CreateRepositoryDirectly(ctx context.Context, doer, owner *user_model.User,
 	if opts.ObjectFormatName == "" {
 		opts.ObjectFormatName = git.Sha1ObjectFormat.Name()
 	}
+	if opts.ObjectFormatName != git.Sha1ObjectFormat.Name() && opts.ObjectFormatName != git.Sha256ObjectFormat.Name() {
+		return nil, fmt.Errorf("unsupported object format: %s", opts.ObjectFormatName)
+	}
 
 	repo := &repo_model.Repository{
 		OwnerID:                         owner.ID,
@@ -238,6 +236,7 @@ func CreateRepositoryDirectly(ctx context.Context, doer, owner *user_model.User,
 		Name:                            opts.Name,
 		LowerName:                       strings.ToLower(opts.Name),
 		Description:                     opts.Description,
+		Website:                         opts.Website,
 		OriginalURL:                     opts.OriginalURL,
 		OriginalServiceType:             opts.GitServiceType,
 		IsPrivate:                       opts.IsPrivate,
@@ -265,8 +264,8 @@ func CreateRepositoryDirectly(ctx context.Context, doer, owner *user_model.User,
 	// WARNING: Don't override all later err with local variables
 	defer func() {
 		if err != nil {
-			// we can not use the ctx because it maybe canceled or timeout
-			cleanupRepository(repo.ID)
+			// we can not use `ctx` because it may be canceled or timed out
+			cleanupRepository(repo)
 		}
 	}()
 
@@ -315,7 +314,7 @@ func CreateRepositoryDirectly(ctx context.Context, doer, owner *user_model.User,
 		licenses = append(licenses, opts.License)
 
 		var stdout string
-		stdout, err = gitrepo.RunCmdString(ctx, repo, gitcmd.NewCommand("rev-parse", "HEAD"))
+		stdout, _, err = gitrepo.RunCmdString(ctx, repo, gitcmd.NewCommand("rev-parse", "HEAD"))
 		if err != nil {
 			log.Error("CreateRepository(git rev-parse HEAD) in %v: Stdout: %s\nError: %v", repo, stdout, err)
 			return nil, fmt.Errorf("CreateRepository(git rev-parse HEAD): %w", err)
@@ -383,15 +382,7 @@ func createRepositoryInDB(ctx context.Context, doer, u *user_model.User, repo *r
 				},
 			})
 		case unit.TypePullRequests:
-			units = append(units, repo_model.RepoUnit{
-				RepoID: repo.ID,
-				Type:   tp,
-				Config: &repo_model.PullRequestsConfig{
-					AllowMerge: true, AllowRebase: true, AllowRebaseMerge: true, AllowSquash: true, AllowFastForwardOnly: true,
-					DefaultMergeStyle: repo_model.MergeStyle(setting.Repository.PullRequest.DefaultMergeStyle),
-					AllowRebaseUpdate: true,
-				},
-			})
+			units = append(units, repo_model.DefaultPullRequestsUnit(repo.ID))
 		case unit.TypeProjects:
 			units = append(units, repo_model.RepoUnit{
 				RepoID: repo.ID,
@@ -461,11 +452,11 @@ func createRepositoryInDB(ctx context.Context, doer, u *user_model.User, repo *r
 	return nil
 }
 
-func cleanupRepository(repoID int64) {
-	if errDelete := DeleteRepositoryDirectly(graceful.GetManager().ShutdownContext(), repoID); errDelete != nil {
+func cleanupRepository(repo *repo_model.Repository) {
+	ctx := graceful.GetManager().ShutdownContext()
+	if errDelete := DeleteRepositoryDirectly(ctx, repo.ID); errDelete != nil {
 		log.Error("cleanupRepository failed: %v", errDelete)
-		// add system notice
-		if err := system_model.CreateRepositoryNotice("DeleteRepositoryDirectly failed when cleanup repository: %v", errDelete); err != nil {
+		if err := system_model.CreateRepositoryNotice("DeleteRepositoryDirectly failed when cleanup repository (%s)", repo.FullName(), errDelete); err != nil {
 			log.Error("CreateRepositoryNotice: %v", err)
 		}
 	}
@@ -476,7 +467,7 @@ func updateGitRepoAfterCreate(ctx context.Context, repo *repo_model.Repository) 
 		return fmt.Errorf("checkDaemonExportOK: %w", err)
 	}
 
-	if stdout, err := gitrepo.RunCmdString(ctx, repo,
+	if stdout, _, err := gitrepo.RunCmdString(ctx, repo,
 		gitcmd.NewCommand("update-server-info")); err != nil {
 		log.Error("CreateRepository(git update-server-info) in %v: Stdout: %s\nError: %v", repo, stdout, err)
 		return fmt.Errorf("CreateRepository(git update-server-info): %w", err)

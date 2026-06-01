@@ -17,20 +17,20 @@ import (
 	"strings"
 	"sync"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/git"
-	giturl "code.gitea.io/gitea/modules/git/url"
-	"code.gitea.io/gitea/modules/httplib"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/optional"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/base"
+	"gitea.dev/modules/git"
+	giturl "gitea.dev/modules/git/url"
+	"gitea.dev/modules/httplib"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/markup"
+	"gitea.dev/modules/optional"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 
 	"xorm.io/builder"
 )
@@ -281,7 +281,7 @@ func (repo *Repository) SizeDetailsString() string {
 	var str strings.Builder
 	sizeDetails := repo.SizeDetails()
 	for _, detail := range sizeDetails {
-		str.WriteString(fmt.Sprintf("%s: %s, ", detail.Name, base.FileSize(detail.Size)))
+		fmt.Fprintf(&str, "%s: %s, ", detail.Name, base.FileSize(detail.Size))
 	}
 	return strings.TrimSuffix(str.String(), ", ")
 }
@@ -376,8 +376,9 @@ func (repo *Repository) CommitLink(commitID string) (result string) {
 }
 
 // APIURL returns the repository API URL
-func (repo *Repository) APIURL() string {
-	return setting.AppURL + "api/v1/repos/" + url.PathEscape(repo.OwnerName) + "/" + url.PathEscape(repo.Name)
+func (repo *Repository) APIURL(ctxOpt ...context.Context) string {
+	ctx := util.OptionalArg(ctxOpt, context.TODO())
+	return httplib.MakeAbsoluteURL(ctx, setting.AppSubURL+"/api/v1/repos/"+url.PathEscape(repo.OwnerName)+"/"+url.PathEscape(repo.Name))
 }
 
 // GetCommitsCountCacheKey returns cache key used for commits count caching.
@@ -422,52 +423,37 @@ func (repo *Repository) UnitEnabled(ctx context.Context, tp unit.Type) bool {
 	return false
 }
 
-// MustGetUnit always returns a RepoUnit object
+// MustGetUnit always returns a RepoUnit object even if the unit doesn't exist (not enabled)
 func (repo *Repository) MustGetUnit(ctx context.Context, tp unit.Type) *RepoUnit {
 	ru, err := repo.GetUnit(ctx, tp)
 	if err == nil {
 		return ru
 	}
-
+	if !errors.Is(err, util.ErrNotExist) {
+		setting.PanicInDevOrTesting("Failed to get unit %v for repository %d: %v", tp, repo.ID, err)
+	}
+	ru = &RepoUnit{RepoID: repo.ID, Type: tp}
 	switch tp {
 	case unit.TypeExternalWiki:
-		return &RepoUnit{
-			Type:   tp,
-			Config: new(ExternalWikiConfig),
-		}
+		ru.Config = new(ExternalWikiConfig)
 	case unit.TypeExternalTracker:
-		return &RepoUnit{
-			Type:   tp,
-			Config: new(ExternalTrackerConfig),
-		}
+		ru.Config = new(ExternalTrackerConfig)
 	case unit.TypePullRequests:
-		return &RepoUnit{
-			Type:   tp,
-			Config: new(PullRequestsConfig),
-		}
+		ru.Config = new(PullRequestsConfig)
 	case unit.TypeIssues:
-		return &RepoUnit{
-			Type:   tp,
-			Config: new(IssuesConfig),
-		}
+		ru.Config = new(IssuesConfig)
 	case unit.TypeActions:
-		return &RepoUnit{
-			Type:   tp,
-			Config: new(ActionsConfig),
-		}
+		ru.Config = new(ActionsConfig)
 	case unit.TypeProjects:
-		cfg := new(ProjectsConfig)
-		cfg.ProjectsMode = ProjectsModeNone
-		return &RepoUnit{
-			Type:   tp,
-			Config: cfg,
+		ru.Config = new(ProjectsConfig)
+	default: // other units don't have config
+	}
+	if ru.Config != nil {
+		if err = ru.Config.FromDB(nil); err != nil {
+			setting.PanicInDevOrTesting("Failed to load default config for unit %v of repository %d: %v", tp, repo.ID, err)
 		}
 	}
-
-	return &RepoUnit{
-		Type:   tp,
-		Config: new(UnitConfig),
-	}
+	return ru
 }
 
 // GetUnit returns a RepoUnit object
@@ -613,16 +599,13 @@ func (repo *Repository) ComposeCompareURL(oldCommitID, newCommitID string) strin
 	return fmt.Sprintf("%s/%s/compare/%s...%s", url.PathEscape(repo.OwnerName), url.PathEscape(repo.Name), util.PathEscapeSegments(oldCommitID), util.PathEscapeSegments(newCommitID))
 }
 
-func (repo *Repository) ComposeBranchCompareURL(baseRepo *Repository, branchName string) string {
-	if baseRepo == nil {
-		baseRepo = repo
-	}
+func (repo *Repository) ComposeBranchCompareURL(baseRepo *Repository, baseBranch, branchName string) string {
 	var cmpBranchEscaped string
 	if repo.ID != baseRepo.ID {
 		cmpBranchEscaped = fmt.Sprintf("%s/%s:", url.PathEscape(repo.OwnerName), url.PathEscape(repo.Name))
 	}
 	cmpBranchEscaped = fmt.Sprintf("%s%s", cmpBranchEscaped, util.PathEscapeSegments(branchName))
-	return fmt.Sprintf("%s/compare/%s...%s", baseRepo.Link(), util.PathEscapeSegments(baseRepo.DefaultBranch), cmpBranchEscaped)
+	return fmt.Sprintf("%s/compare/%s...%s", baseRepo.Link(), util.PathEscapeSegments(baseBranch), cmpBranchEscaped)
 }
 
 // IsOwnedBy returns true when user owns this repository
@@ -881,7 +864,7 @@ func IsRepositoryModelExist(ctx context.Context, u *user_model.User, repoName st
 // non-generated repositories, and TemplateRepo will be left untouched)
 func GetTemplateRepo(ctx context.Context, repo *Repository) (*Repository, error) {
 	if !repo.IsGenerated() {
-		return nil, nil
+		return nil, nil //nolint:nilnil // return nil for non-generated repositories
 	}
 
 	return GetRepositoryByID(ctx, repo.TemplateID)

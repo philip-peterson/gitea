@@ -7,9 +7,9 @@ package forms
 import (
 	"net/http"
 
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/web/middleware"
-	"code.gitea.io/gitea/services/context"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/web/middleware"
+	"gitea.dev/services/context"
 
 	"gitea.com/go-chi/binding"
 )
@@ -36,13 +36,13 @@ func (f *CreateOrgForm) Validate(req *http.Request, errs binding.Errors) binding
 
 // UpdateOrgSettingForm form for updating organization settings
 type UpdateOrgSettingForm struct {
-	FullName                  string `binding:"MaxSize(100)"`
-	Email                     string `binding:"MaxSize(255)"`
-	Description               string `binding:"MaxSize(255)"`
-	Website                   string `binding:"ValidUrl;MaxSize(255)"`
-	Location                  string `binding:"MaxSize(50)"`
-	MaxRepoCreation           int
-	RepoAdminChangeTeamAccess bool
+	FullName                  *string `binding:"MaxSize(100)"`
+	Email                     *string `binding:"MaxSize(255)"`
+	Description               *string `binding:"MaxSize(255)"`
+	Website                   *string `binding:"ValidUrl;MaxSize(255)"`
+	Location                  *string `binding:"MaxSize(50)"`
+	MaxRepoCreation           *int
+	RepoAdminChangeTeamAccess *bool
 }
 
 // Validate validates the fields

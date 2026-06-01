@@ -9,7 +9,7 @@ package git
 import (
 	"strings"
 
-	"code.gitea.io/gitea/modules/git/gitcmd"
+	"gitea.dev/modules/git/gitcmd"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/hash"
@@ -65,16 +65,6 @@ func (repo *Repository) ConvertToGitID(commitID string) (ObjectID, error) {
 	}
 
 	return NewIDFromString(actualCommitID)
-}
-
-// IsCommitExist returns true if given commit exists in current repository.
-func (repo *Repository) IsCommitExist(name string) bool {
-	hash, err := repo.ConvertToGitID(name)
-	if err != nil {
-		return false
-	}
-	_, err = repo.gogitRepo.CommitObject(plumbing.Hash(hash.RawValue()))
-	return err == nil
 }
 
 func (repo *Repository) getCommit(id ObjectID) (*Commit, error) {

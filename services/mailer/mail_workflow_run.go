@@ -10,16 +10,16 @@ import (
 	"sort"
 	"time"
 
-	actions_model "code.gitea.io/gitea/models/actions"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/translation"
-	"code.gitea.io/gitea/services/convert"
-	sender_service "code.gitea.io/gitea/services/mailer/sender"
+	actions_model "gitea.dev/models/actions"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/base"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/translation"
+	"gitea.dev/services/convert"
+	sender_service "gitea.dev/services/mailer/sender"
 )
 
 const tplWorkflowRun templates.TplName = "repo/actions/workflow_run"
@@ -37,7 +37,7 @@ func generateMessageIDForActionsWorkflowRunStatusEmail(repo *repo_model.Reposito
 }
 
 func composeAndSendActionsWorkflowRunStatusEmail(ctx context.Context, repo *repo_model.Repository, run *actions_model.ActionRun, sender *user_model.User, recipients []*user_model.User) error {
-	jobs, err := actions_model.GetRunJobsByRunID(ctx, run.ID)
+	jobs, err := actions_model.GetLatestAttemptJobsByRepoAndRunID(ctx, repo.ID, run.ID)
 	if err != nil {
 		return err
 	}
@@ -149,30 +149,31 @@ func composeAndSendActionsWorkflowRunStatusEmail(ctx context.Context, repo *repo
 	return nil
 }
 
-func MailActionsTrigger(ctx context.Context, sender *user_model.User, repo *repo_model.Repository, run *actions_model.ActionRun) error {
+func MailActionsTrigger(ctx context.Context, recipient *user_model.User, repo *repo_model.Repository, run *actions_model.ActionRun) error {
 	if setting.MailService == nil {
 		return nil
 	}
 	if !run.Status.IsDone() || run.Status.IsSkipped() {
 		return nil
 	}
-
-	recipients := make([]*user_model.User, 0)
-
-	if !sender.IsGiteaActions() && !sender.IsGhost() && sender.IsMailable() {
-		notifyPref, err := user_model.GetUserSetting(ctx, sender.ID,
-			user_model.SettingsKeyEmailNotificationGiteaActions, user_model.SettingEmailNotificationGiteaActionsFailureOnly)
-		if err != nil {
-			return err
-		}
-		if notifyPref == user_model.SettingEmailNotificationGiteaActionsAll || !run.Status.IsSuccess() && notifyPref != user_model.SettingEmailNotificationGiteaActionsDisabled {
-			recipients = append(recipients, sender)
-		}
+	if !recipient.IsMailable() {
+		return nil
 	}
 
-	if len(recipients) > 0 {
-		log.Debug("MailActionsTrigger: Initiate email composition")
-		return composeAndSendActionsWorkflowRunStatusEmail(ctx, repo, run, sender, recipients)
+	notifyPref, err := user_model.GetUserSetting(ctx, recipient.ID,
+		user_model.SettingsKeyEmailNotificationGiteaActions, user_model.SettingEmailNotificationGiteaActionsFailureOnly)
+	if err != nil {
+		return err
 	}
-	return nil
+	// "disabled" never sends
+	if notifyPref == user_model.SettingEmailNotificationGiteaActionsDisabled {
+		return nil
+	}
+	// "failure-only" skips non-failure runs
+	if notifyPref != user_model.SettingEmailNotificationGiteaActionsAll && !run.Status.IsFailure() {
+		return nil
+	}
+
+	log.Debug("MailActionsTrigger: Initiate email composition")
+	return composeAndSendActionsWorkflowRunStatusEmail(ctx, repo, run, recipient, []*user_model.User{recipient})
 }

@@ -12,18 +12,18 @@ import (
 	"path"
 	"strconv"
 
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/charset"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/languagestats"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/highlight"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/services/context"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/charset"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/languagestats"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/highlight"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/context"
 )
 
 type blameRow struct {
@@ -231,7 +231,7 @@ func renderBlameFillFirstBlameRow(repoLink string, avatarUtils *templates.Avatar
 	br.PreviousSha = part.PreviousSha
 	br.PreviousShaURL = fmt.Sprintf("%s/blame/commit/%s/%s", repoLink, url.PathEscape(part.PreviousSha), util.PathEscapeSegments(part.PreviousPath))
 	br.CommitURL = fmt.Sprintf("%s/commit/%s", repoLink, url.PathEscape(part.Sha))
-	br.CommitMessage = commit.CommitMessage
+	br.CommitMessage = commit.MessageUTF8()
 	br.CommitSince = templates.TimeSince(commit.Author.When)
 }
 
@@ -267,7 +267,7 @@ func renderBlame(ctx *context.Context, blameParts []*gitrepo.BlamePart, commitNa
 
 	bufContent := buf.Bytes()
 	bufContent = charset.ToUTF8(bufContent, charset.ConvertOpts{})
-	highlighted, lexerName := highlight.Code(path.Base(ctx.Repo.TreePath), language, util.UnsafeBytesToString(bufContent))
+	highlighted, _, lexerDisplayName := highlight.RenderCodeSlowGuess(path.Base(ctx.Repo.TreePath), language, util.UnsafeBytesToString(bufContent))
 	unsafeLines := highlight.UnsafeSplitHighlightedLines(highlighted)
 	for i, br := range rows {
 		var line template.HTML
@@ -280,5 +280,5 @@ func renderBlame(ctx *context.Context, blameParts []*gitrepo.BlamePart, commitNa
 
 	ctx.Data["EscapeStatus"] = escapeStatus
 	ctx.Data["BlameRows"] = rows
-	ctx.Data["LexerName"] = lexerName
+	ctx.Data["LexerName"] = lexerDisplayName
 }

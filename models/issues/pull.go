@@ -9,21 +9,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	org_model "code.gitea.io/gitea/models/organization"
-	pull_model "code.gitea.io/gitea/models/pull"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	org_model "gitea.dev/models/organization"
+	pull_model "gitea.dev/models/pull"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 
+	"github.com/dlclark/regexp2/v2"
 	"xorm.io/builder"
 )
 
@@ -437,8 +437,8 @@ func (pr *PullRequest) IsChecking() bool {
 	return pr.Status == PullRequestStatusChecking
 }
 
-// CanAutoMerge returns true if this pull request can be merged automatically.
-func (pr *PullRequest) CanAutoMerge() bool {
+// IsStatusMergeable returns true if this pull request is mergeable to its base
+func (pr *PullRequest) IsStatusMergeable() bool {
 	return pr.Status == PullRequestStatusMergeable
 }
 
@@ -475,7 +475,7 @@ func NewPullRequest(ctx context.Context, repo *repo_model.Repository, issue *Iss
 			LabelIDs:    labelIDs,
 			Attachments: uuids,
 		}); err != nil {
-			if repo_model.IsErrUserDoesNotHaveAccessToRepo(err) || IsErrNewIssueInsert(err) {
+			if repo_model.IsErrUserDoesNotHaveAccessToRepo(err) {
 				return err
 			}
 			return fmt.Errorf("newIssue: %w", err)
@@ -658,17 +658,24 @@ func (pr *PullRequest) IsWorkInProgress(ctx context.Context) bool {
 
 // HasWorkInProgressPrefix determines if the given PR title has a Work In Progress prefix
 func HasWorkInProgressPrefix(title string) bool {
-	for _, prefix := range setting.Repository.PullRequest.WorkInProgressPrefixes {
-		if strings.HasPrefix(strings.ToUpper(title), strings.ToUpper(prefix)) {
-			return true
-		}
-	}
-	return false
+	_, ok := CutWorkInProgressPrefix(title)
+	return ok
 }
 
-// IsFilesConflicted determines if the  Pull Request has changes conflicting with the target branch.
+func CutWorkInProgressPrefix(title string) (origTitle string, ok bool) {
+	for _, prefix := range setting.Repository.PullRequest.WorkInProgressPrefixes {
+		prefixLen := len(prefix)
+		if prefixLen <= len(title) && util.AsciiEqualFold(title[:prefixLen], prefix) {
+			return title[len(prefix):], true
+		}
+	}
+	return title, false
+}
+
+// IsFilesConflicted determines if the Pull Request has changes conflicting with the target branch.
+// Sometimes a conflict may not list any files
 func (pr *PullRequest) IsFilesConflicted() bool {
-	return len(pr.ConflictedFiles) > 0
+	return pr.Status == PullRequestStatusConflict
 }
 
 // GetWorkInProgressPrefix returns the prefix used to mark the pull request as a work in progress.
@@ -854,7 +861,7 @@ func GetCodeOwnersFromContent(ctx context.Context, data string) ([]*CodeOwnerRul
 }
 
 type CodeOwnerRule struct {
-	Rule     *regexp.Regexp
+	Rule     *regexp2.Regexp // it supports negative lookahead, does better for end users
 	Negative bool
 	Users    []*user_model.User
 	Teams    []*org_model.Team
@@ -870,7 +877,13 @@ func ParseCodeOwnersLine(ctx context.Context, tokens []string) (*CodeOwnerRule, 
 
 	warnings := make([]string, 0)
 
-	rule.Rule, err = regexp.Compile(fmt.Sprintf("^%s$", strings.TrimPrefix(tokens[0], "!")))
+	// Strip leading "!" for negative rules, then strip leading "/" since
+	// git returns relative paths (e.g. "docs/foo.md" not "/docs/foo.md")
+	// and the regex is already anchored with ^...$, so the "/" is redundant.
+	pattern := strings.TrimPrefix(tokens[0], "!")
+	pattern = strings.TrimPrefix(pattern, "/")
+	expr := fmt.Sprintf("^%s$", pattern)
+	rule.Rule, err = regexp2.Compile(expr, regexp2.None)
 	if err != nil {
 		warnings = append(warnings, fmt.Sprintf("incorrect codeowner regexp: %s", err))
 		return nil, warnings

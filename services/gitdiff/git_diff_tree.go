@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
 )
 
 type DiffTree struct {
@@ -166,16 +166,6 @@ func parseGitDiffTreeLine(line string) (*DiffTreeRecord, error) {
 		return nil, fmt.Errorf("unparsable output for diff-tree --raw: `%s`, expected 5 space delimited values got %d)", line, len(fields))
 	}
 
-	baseMode, err := git.ParseEntryMode(fields[0])
-	if err != nil {
-		return nil, err
-	}
-
-	headMode, err := git.ParseEntryMode(fields[1])
-	if err != nil {
-		return nil, err
-	}
-
 	baseBlobID := fields[2]
 	headBlobID := fields[3]
 
@@ -201,8 +191,8 @@ func parseGitDiffTreeLine(line string) (*DiffTreeRecord, error) {
 	return &DiffTreeRecord{
 		Status:     status,
 		Score:      score,
-		BaseMode:   baseMode,
-		HeadMode:   headMode,
+		BaseMode:   git.ParseEntryMode(fields[0]),
+		HeadMode:   git.ParseEntryMode(fields[1]),
 		BaseBlobID: baseBlobID,
 		HeadBlobID: headBlobID,
 		BasePath:   basePath,

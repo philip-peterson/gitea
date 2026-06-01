@@ -15,19 +15,19 @@ import (
 	"testing"
 	"time"
 
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/cache"
-	git_module "code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/reqctx"
-	"code.gitea.io/gitea/modules/session"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/translation"
-	"code.gitea.io/gitea/modules/web/middleware"
-	"code.gitea.io/gitea/services/context"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/cache"
+	git_module "gitea.dev/modules/git"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/reqctx"
+	"gitea.dev/modules/session"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/translation"
+	"gitea.dev/modules/web/middleware"
+	"gitea.dev/services/context"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -125,7 +125,7 @@ func LoadRepo(t *testing.T, ctx gocontext.Context, repoID int64) {
 	repo.Owner, err = user_model.GetUserByID(ctx, repo.Repository.OwnerID)
 	assert.NoError(t, err)
 	repo.RepoLink = repo.Repository.Link()
-	repo.Permission, err = access_model.GetUserRepoPermission(ctx, repo.Repository, doer)
+	repo.Permission, err = access_model.GetDoerRepoPermission(ctx, repo.Repository, doer)
 	assert.NoError(t, err)
 }
 
@@ -143,8 +143,9 @@ func LoadRepoCommit(t *testing.T, ctx gocontext.Context) {
 
 	gitRepo, err := gitrepo.OpenRepository(ctx, repo.Repository)
 	require.NoError(t, err)
-	defer gitRepo.Close()
-
+	t.Cleanup(func() {
+		gitRepo.Close()
+	})
 	if repo.RefFullName == "" {
 		repo.RefFullName = git_module.RefNameFromBranch(repo.Repository.DefaultBranch)
 	}
@@ -161,8 +162,10 @@ func LoadUser(t *testing.T, ctx gocontext.Context, userID int64) {
 	switch ctx := ctx.(type) {
 	case *context.Context:
 		ctx.Doer = doer
+		ctx.IsSigned = true
 	case *context.APIContext:
 		ctx.Doer = doer
+		ctx.IsSigned = true
 	default:
 		assert.FailNow(t, "context is not *context.Context or *context.APIContext")
 	}
@@ -189,7 +192,7 @@ func LoadGitRepo(t *testing.T, ctx gocontext.Context) {
 type MockRender struct{}
 
 func (tr *MockRender) TemplateLookup(tmpl string, _ gocontext.Context) (templates.TemplateExecutor, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // mock implementation returns nil to indicate no template found
 }
 
 func (tr *MockRender) HTML(w io.Writer, status int, _ templates.TplName, _ any, _ gocontext.Context) error {

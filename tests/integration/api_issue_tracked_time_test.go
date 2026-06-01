@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/tests"
+	auth_model "gitea.dev/models/auth"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/tests"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,8 +32,7 @@ func TestAPIGetTrackedTimes(t *testing.T) {
 	req := NewRequestf(t, "GET", "/api/v1/repos/%s/%s/issues/%d/times", user2.Name, issue2.Repo.Name, issue2.Index).
 		AddTokenAuth(token)
 	resp := MakeRequest(t, req, http.StatusOK)
-	var apiTimes api.TrackedTimeList
-	DecodeJSON(t, resp, &apiTimes)
+	apiTimes := DecodeJSON(t, resp, api.TrackedTimeList{})
 	expect, err := issues_model.GetTrackedTimes(t.Context(), &issues_model.FindTrackedTimesOptions{IssueID: issue2.ID})
 	assert.NoError(t, err)
 	assert.Len(t, apiTimes, 3)
@@ -56,8 +55,7 @@ func TestAPIGetTrackedTimes(t *testing.T) {
 	req = NewRequestf(t, "GET", "/api/v1/repos/%s/%s/issues/%d/times?since=%s&before=%s", user2.Name, issue2.Repo.Name, issue2.Index, since, before).
 		AddTokenAuth(token)
 	resp = MakeRequest(t, req, http.StatusOK)
-	var filterAPITimes api.TrackedTimeList
-	DecodeJSON(t, resp, &filterAPITimes)
+	filterAPITimes := DecodeJSON(t, resp, api.TrackedTimeList{})
 	assert.Len(t, filterAPITimes, 2)
 	assert.Equal(t, int64(3), filterAPITimes[0].ID)
 	assert.Equal(t, int64(6), filterAPITimes[1].ID)
@@ -78,6 +76,12 @@ func TestAPIDeleteTrackedTime(t *testing.T) {
 	req := NewRequestf(t, "DELETE", "/api/v1/repos/%s/%s/issues/%d/times/%d", user2.Name, issue2.Repo.Name, issue2.Index, time6.ID).
 		AddTokenAuth(token)
 	MakeRequest(t, req, http.StatusForbidden)
+
+	// Deletion should be scoped to the issue in the URL
+	time5 := unittest.AssertExistsAndLoadBean(t, &issues_model.TrackedTime{ID: 5})
+	req = NewRequestf(t, "DELETE", "/api/v1/repos/%s/%s/issues/%d/times/%d", user2.Name, issue2.Repo.Name, issue2.Index, time5.ID).
+		AddTokenAuth(token)
+	MakeRequest(t, req, http.StatusNotFound)
 
 	time3 := unittest.AssertExistsAndLoadBean(t, &issues_model.TrackedTime{ID: 3})
 	req = NewRequestf(t, "DELETE", "/api/v1/repos/%s/%s/issues/%d/times/%d", user2.Name, issue2.Repo.Name, issue2.Index, time3.ID).
@@ -120,8 +124,7 @@ func TestAPIAddTrackedTimes(t *testing.T) {
 		Created: time.Unix(947688818, 0),
 	}).AddTokenAuth(token)
 	resp := MakeRequest(t, req, http.StatusOK)
-	var apiNewTime api.TrackedTime
-	DecodeJSON(t, resp, &apiNewTime)
+	apiNewTime := DecodeJSON(t, resp, &api.TrackedTime{})
 
 	assert.EqualValues(t, 33, apiNewTime.Time)
 	assert.Equal(t, user2.ID, apiNewTime.UserID)

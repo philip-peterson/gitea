@@ -11,11 +11,11 @@ import (
 	"regexp"
 	"strings"
 
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/reqctx"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/services/context"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/reqctx"
+	"gitea.dev/modules/setting"
+	"gitea.dev/services/context"
 )
 
 // ErrFileTypeForbidden not allowed file type error
@@ -95,8 +95,8 @@ func AddUploadContext(ctx *context.Context, uploadType string) {
 		ctx.Data["UploadRemoveUrl"] = ctx.Repo.RepoLink + "/releases/attachments/remove"
 		ctx.Data["UploadLinkUrl"] = ctx.Repo.RepoLink + "/releases/attachments"
 		ctx.Data["UploadAccepts"] = strings.ReplaceAll(setting.Repository.Release.AllowedTypes, "|", ",")
-		ctx.Data["UploadMaxFiles"] = setting.Attachment.MaxFiles
-		ctx.Data["UploadMaxSize"] = setting.Attachment.MaxSize
+		ctx.Data["UploadMaxFiles"] = setting.Repository.Release.MaxFiles
+		ctx.Data["UploadMaxSize"] = setting.Repository.Release.FileMaxSize
 	case "comment":
 		ctx.Data["UploadUrl"] = ctx.Repo.RepoLink + "/issues/attachments"
 		ctx.Data["UploadRemoveUrl"] = ctx.Repo.RepoLink + "/issues/attachments/remove"

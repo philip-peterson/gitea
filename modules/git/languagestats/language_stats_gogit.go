@@ -9,10 +9,10 @@ import (
 	"bytes"
 	"io"
 
-	"code.gitea.io/gitea/modules/analyze"
-	git_module "code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/attribute"
-	"code.gitea.io/gitea/modules/optional"
+	"gitea.dev/modules/analyze"
+	git_module "gitea.dev/modules/git"
+	"gitea.dev/modules/git/attribute"
+	"gitea.dev/modules/optional"
 
 	"github.com/go-enry/go-enry/v2"
 	"github.com/go-git/go-git/v5"
@@ -108,7 +108,7 @@ func GetLanguageStats(repo *git_module.Repository, commitID string) (map[string]
 		if (!isVendored.Has() && analyze.IsVendor(f.Name)) ||
 			enry.IsDotFile(f.Name) ||
 			(!isDocumentation.Has() && enry.IsDocumentation(f.Name)) ||
-			enry.IsConfiguration(f.Name) {
+			(!isDetectable.Has() && enry.IsConfiguration(f.Name)) {
 			return nil
 		}
 

@@ -8,20 +8,20 @@ import (
 	"fmt"
 	"strings"
 
-	activities_model "code.gitea.io/gitea/models/activities"
-	"code.gitea.io/gitea/models/db"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/util"
+	activities_model "gitea.dev/models/activities"
+	"gitea.dev/models/db"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/util"
 )
 
-func GetFeedsForDashboard(ctx context.Context, opts activities_model.GetFeedsOptions) (activities_model.ActionList, int, error) {
+func GetFeedsForDashboard(ctx context.Context, opts activities_model.GetFeedsOptions) (activities_model.ActionList, int64, error) {
 	opts.DontCount = opts.RequestedTeam == nil && opts.Date == ""
 	results, cnt, err := activities_model.GetFeeds(ctx, opts)
-	return results, util.Iif(opts.DontCount, -1, int(cnt)), err
+	return results, util.Iif(opts.DontCount, -1, cnt), err
 }
 
 // GetFeeds returns actions according to the provided options
@@ -132,7 +132,7 @@ func NotifyWatchers(ctx context.Context, acts ...*activities_model.Action) error
 				permPR[i] = false
 				continue
 			}
-			perm, err := access_model.GetUserRepoPermission(ctx, repo, user)
+			perm, err := access_model.GetIndividualUserRepoPermission(ctx, repo, user)
 			if err != nil {
 				permCode[i] = false
 				permIssue[i] = false

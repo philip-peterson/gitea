@@ -8,21 +8,21 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
-	"code.gitea.io/gitea/models/db"
-	repo_model "code.gitea.io/gitea/models/repo"
-	system_model "code.gitea.io/gitea/models/system"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/globallock"
-	"code.gitea.io/gitea/modules/graceful"
-	"code.gitea.io/gitea/modules/log"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	asymkey_service "code.gitea.io/gitea/services/asymkey"
-	repo_service "code.gitea.io/gitea/services/repository"
+	"gitea.dev/models/db"
+	repo_model "gitea.dev/models/repo"
+	system_model "gitea.dev/models/system"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/globallock"
+	"gitea.dev/modules/graceful"
+	"gitea.dev/modules/log"
+	repo_module "gitea.dev/modules/repository"
+	asymkey_service "gitea.dev/services/asymkey"
+	repo_service "gitea.dev/services/repository"
 )
 
 func getWikiWorkingLockKey(repoID int64) string {
@@ -59,7 +59,7 @@ func prepareGitPath(gitRepo *git.Repository, defaultWikiBranch string, wikiPath 
 	// Look for both files
 	filesInIndex, err := gitRepo.LsTree(defaultWikiBranch, unescaped, gitPath)
 	if err != nil {
-		if strings.Contains(err.Error(), "Not a valid object name") {
+		if gitcmd.IsStdErrorNotValidObjectName(err) {
 			return false, gitPath, nil // branch doesn't exist
 		}
 		log.Error("Wiki LsTree failed, err: %v", err)
@@ -170,7 +170,7 @@ func updateWikiPage(ctx context.Context, doer *user_model.User, repo *repo_model
 
 	// FIXME: The wiki doesn't have lfs support at present - if this changes need to check attributes here
 
-	objectHash, err := gitRepo.HashObject(strings.NewReader(content))
+	objectHash, err := gitRepo.HashObjectBytes([]byte(content))
 	if err != nil {
 		log.Error("HashObject failed: %v", err)
 		return err
@@ -369,7 +369,7 @@ func DeleteWiki(ctx context.Context, repo *repo_model.Repository) error {
 	}
 
 	if err := gitrepo.DeleteRepository(ctx, repo.WikiStorageRepo()); err != nil {
-		desc := fmt.Sprintf("Delete wiki repository files [%s]: %v", repo.FullName(), err)
+		desc := fmt.Sprintf("Delete wiki repository files (%s): %v", repo.FullName(), err)
 		// Note we use the db.DefaultContext here rather than passing in a context as the context may be cancelled
 		if err = system_model.CreateNotice(graceful.GetManager().ShutdownContext(), system_model.NoticeRepository, desc); err != nil {
 			log.Error("CreateRepositoryNotice: %v", err)

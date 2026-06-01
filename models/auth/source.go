@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"reflect"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/optional"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/optional"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"
@@ -99,7 +100,7 @@ var registeredConfigs = map[Type]func() Config{}
 
 // RegisterTypeConfig register a config for a provided type
 func RegisterTypeConfig(typ Type, exemplar Config) {
-	if reflect.TypeOf(exemplar).Kind() == reflect.Ptr {
+	if reflect.TypeOf(exemplar).Kind() == reflect.Pointer {
 		// Pointer:
 		registeredConfigs[typ] = func() Config {
 			return reflect.New(reflect.ValueOf(exemplar).Elem().Type()).Interface().(Config)
@@ -117,7 +118,7 @@ func RegisterTypeConfig(typ Type, exemplar Config) {
 type Source struct {
 	ID              int64 `xorm:"pk autoincr"`
 	Type            Type
-	Name            string `xorm:"UNIQUE"`
+	Name            string `xorm:"UNIQUE"` // it can be the OIDC's provider name, see services/auth/source/oauth2/source_register.go: RegisterSource
 	IsActive        bool   `xorm:"INDEX NOT NULL DEFAULT false"`
 	IsSyncEnabled   bool   `xorm:"INDEX NOT NULL DEFAULT false"`
 	TwoFactorPolicy string `xorm:"two_factor_policy NOT NULL DEFAULT ''"`
@@ -139,7 +140,10 @@ func init() {
 // BeforeSet is invoked from XORM before setting the value of a field of this object.
 func (source *Source) BeforeSet(colName string, val xorm.Cell) {
 	if colName == "type" {
-		typ := Type(db.Cell2Int64(val))
+		typ, _, err := db.CellToInt(val, NoType)
+		if err != nil {
+			setting.PanicInDevOrTesting("Unable to convert login source (id=%d) type: %v", source.ID, err)
+		}
 		constructor, ok := registeredConfigs[typ]
 		if !ok {
 			return

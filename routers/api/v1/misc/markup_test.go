@@ -12,15 +12,15 @@ import (
 	"strings"
 	"testing"
 
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/test"
-	"code.gitea.io/gitea/modules/web"
-	context_service "code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/contexttest"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	"gitea.dev/modules/markup"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/test"
+	"gitea.dev/modules/web"
+	context_service "gitea.dev/services/context"
+	"gitea.dev/services/contexttest"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -173,8 +173,8 @@ Here are some links to the most important topics. You can find the full list of 
 <a href="http://localhost:3000/user2/repo1/src/branch/main/path/image.png" target="_blank" rel="nofollow noopener"><img src="http://localhost:3000/user2/repo1/media/branch/main/path/image.png" alt="Image"/></a></p>
 `, http.StatusOK)
 
-	testRenderMarkup(t, "file", false, "path/test.unknown", "## Test", "unsupported file to render: \"path/test.unknown\"\n", http.StatusUnprocessableEntity)
-	testRenderMarkup(t, "unknown", false, "", "## Test", "Unknown mode: unknown\n", http.StatusUnprocessableEntity)
+	testRenderMarkup(t, "file", false, "path/test.unknown", "## Test", "unable to find a render\n", http.StatusUnprocessableEntity)
+	testRenderMarkup(t, "unknown", false, "", "## Test", "unsupported render mode: unknown\n", http.StatusUnprocessableEntity)
 }
 
 var simpleCases = []string{

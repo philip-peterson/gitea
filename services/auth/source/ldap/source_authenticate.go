@@ -7,15 +7,15 @@ import (
 	"context"
 	"strings"
 
-	asymkey_model "code.gitea.io/gitea/models/asymkey"
-	"code.gitea.io/gitea/models/auth"
-	user_model "code.gitea.io/gitea/models/user"
-	auth_module "code.gitea.io/gitea/modules/auth"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/optional"
-	asymkey_service "code.gitea.io/gitea/services/asymkey"
-	source_service "code.gitea.io/gitea/services/auth/source"
-	user_service "code.gitea.io/gitea/services/user"
+	asymkey_model "gitea.dev/models/asymkey"
+	"gitea.dev/models/auth"
+	user_model "gitea.dev/models/user"
+	auth_module "gitea.dev/modules/auth"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/optional"
+	asymkey_service "gitea.dev/services/asymkey"
+	source_service "gitea.dev/services/auth/source"
+	user_service "gitea.dev/services/user"
 )
 
 // Authenticate queries if login/password is valid against the LDAP directory pool,
@@ -73,7 +73,7 @@ func (source *Source) Authenticate(ctx context.Context, user *user_model.User, u
 	}
 
 	if user != nil {
-		if isAttributeSSHPublicKeySet && asymkey_model.SynchronizePublicKeys(ctx, user, source.AuthSource, sr.SSHPublicKey) {
+		if isAttributeSSHPublicKeySet && asymkey_model.SynchronizePublicKeys(ctx, user, source.AuthSource, sr.SSHPublicKey, source.SSHKeysAreVerified) {
 			if err := asymkey_service.RewriteAllPublicKeys(ctx); err != nil {
 				return user, err
 			}
@@ -99,7 +99,7 @@ func (source *Source) Authenticate(ctx context.Context, user *user_model.User, u
 			return user, err
 		}
 
-		if isAttributeSSHPublicKeySet && asymkey_model.AddPublicKeysBySource(ctx, user, source.AuthSource, sr.SSHPublicKey) {
+		if isAttributeSSHPublicKeySet && asymkey_model.AddPublicKeysBySource(ctx, user, source.AuthSource, sr.SSHPublicKey, source.SSHKeysAreVerified) {
 			if err := asymkey_service.RewriteAllPublicKeys(ctx); err != nil {
 				return user, err
 			}

@@ -12,18 +12,19 @@ import (
 	"strings"
 	"time"
 
-	activities_model "code.gitea.io/gitea/models/activities"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/renderhelper"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/emoji"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup/markdown"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/translation"
-	incoming_payload "code.gitea.io/gitea/services/mailer/incoming/payload"
-	sender_service "code.gitea.io/gitea/services/mailer/sender"
-	"code.gitea.io/gitea/services/mailer/token"
+	activities_model "gitea.dev/models/activities"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/renderhelper"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/emoji"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/markup/markdown"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/translation"
+	"gitea.dev/modules/util"
+	incoming_payload "gitea.dev/services/mailer/incoming/payload"
+	sender_service "gitea.dev/services/mailer/sender"
+	"gitea.dev/services/mailer/token"
 )
 
 // maxEmailBodySize is the approximate maximum size of an email body in bytes
@@ -122,9 +123,7 @@ func composeIssueCommentMessages(ctx context.Context, comment *mailComment, lang
 	var mailSubject bytes.Buffer
 	if err := LoadedTemplates().SubjectTemplates.ExecuteTemplate(&mailSubject, tplName, mailMeta); err == nil {
 		subject = sanitizeSubject(mailSubject.String())
-		if subject == "" {
-			subject = fallback
-		}
+		subject = util.IfZero(subject, fallback)
 	} else {
 		log.Error("ExecuteTemplate [%s]: %v", tplName+"/subject", err)
 	}
@@ -183,7 +182,7 @@ func composeIssueCommentMessages(ctx context.Context, comment *mailComment, lang
 				if err != nil {
 					log.Error("CreateToken failed: %v", err)
 				} else {
-					replyAddress := strings.Replace(setting.IncomingEmail.ReplyToAddress, setting.IncomingEmail.TokenPlaceholder, token, 1)
+					replyAddress := strings.Replace(setting.IncomingEmail.ReplyToAddress, setting.IncomingEmailTokenPlaceholder, token, 1)
 					msg.ReplyTo = replyAddress
 					msg.SetHeader("List-Post", fmt.Sprintf("<mailto:%s>", replyAddress))
 
@@ -195,7 +194,7 @@ func composeIssueCommentMessages(ctx context.Context, comment *mailComment, lang
 			if err != nil {
 				log.Error("CreateToken failed: %v", err)
 			} else {
-				unsubAddress := strings.Replace(setting.IncomingEmail.ReplyToAddress, setting.IncomingEmail.TokenPlaceholder, token, 1)
+				unsubAddress := strings.Replace(setting.IncomingEmail.ReplyToAddress, setting.IncomingEmailTokenPlaceholder, token, 1)
 				listUnsubscribe = append(listUnsubscribe, "<mailto:"+unsubAddress+">")
 			}
 		}
@@ -203,7 +202,7 @@ func composeIssueCommentMessages(ctx context.Context, comment *mailComment, lang
 		msg.SetHeader("References", references...)
 		msg.SetHeader("List-Unsubscribe", listUnsubscribe...)
 
-		for key, value := range generateAdditionalHeadersForIssue(comment, actType, recipient) {
+		for key, value := range generateAdditionalHeadersForIssue(ctx, comment, actType, recipient) {
 			msg.SetHeader(key, value)
 		}
 
@@ -261,14 +260,14 @@ func actionToTemplate(issue *issues_model.Issue, actionType activities_model.Act
 	}
 
 	template = "repo/" + typeName + "/" + name
-	ok := LoadedTemplates().BodyTemplates.Lookup(template) != nil
+	ok := LoadedTemplates().BodyTemplates.HasTemplate(template)
 	if !ok && typeName != "issue" {
 		template = "repo/issue/" + name
-		ok = LoadedTemplates().BodyTemplates.Lookup(template) != nil
+		ok = LoadedTemplates().BodyTemplates.HasTemplate(template)
 	}
 	if !ok {
 		template = "repo/" + typeName + "/default"
-		ok = LoadedTemplates().BodyTemplates.Lookup(template) != nil
+		ok = LoadedTemplates().BodyTemplates.HasTemplate(template)
 	}
 	if !ok {
 		template = "repo/issue/default"
@@ -303,17 +302,17 @@ func generateMessageIDForIssue(issue *issues_model.Issue, comment *issues_model.
 	return fmt.Sprintf("<%s/%s/%d%s@%s>", issue.Repo.FullName(), path, issue.Index, extra, setting.Domain)
 }
 
-func generateAdditionalHeadersForIssue(ctx *mailComment, reason string, recipient *user_model.User) map[string]string {
-	repo := ctx.Issue.Repo
+func generateAdditionalHeadersForIssue(ctx context.Context, comment *mailComment, reason string, recipient *user_model.User) map[string]string {
+	repo := comment.Issue.Repo
 
-	issueID := strconv.FormatInt(ctx.Issue.Index, 10)
+	issueID := strconv.FormatInt(comment.Issue.Index, 10)
 	headers := generateMetadataHeaders(repo)
 
-	maps.Copy(headers, generateSenderRecipientHeaders(ctx.Doer, recipient))
+	maps.Copy(headers, generateSenderRecipientHeaders(comment.Doer, recipient))
 	maps.Copy(headers, generateReasonHeaders(reason))
 
 	headers["X-Gitea-Issue-ID"] = issueID
-	headers["X-Gitea-Issue-Link"] = ctx.Issue.HTMLURL(context.TODO()) // FIXME: use proper context
+	headers["X-Gitea-Issue-Link"] = comment.Issue.HTMLURL(ctx)
 	headers["X-GitLab-Issue-IID"] = issueID
 
 	return headers

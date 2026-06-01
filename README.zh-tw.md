@@ -2,13 +2,12 @@
 
 [![](https://github.com/go-gitea/gitea/actions/workflows/release-nightly.yml/badge.svg?branch=main)](https://github.com/go-gitea/gitea/actions/workflows/release-nightly.yml?query=branch%3Amain "Release Nightly")
 [![](https://img.shields.io/discord/322538954119184384.svg?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/Gitea "Join the Discord chat at https://discord.gg/Gitea")
-[![](https://goreportcard.com/badge/code.gitea.io/gitea)](https://goreportcard.com/report/code.gitea.io/gitea "Go Report Card")
-[![](https://pkg.go.dev/badge/code.gitea.io/gitea?status.svg)](https://pkg.go.dev/code.gitea.io/gitea "GoDoc")
+[![](https://goreportcard.com/badge/gitea.dev)](https://goreportcard.com/report/gitea.dev "Go Report Card")
+[![](https://pkg.go.dev/badge/gitea.dev?status.svg)](https://pkg.go.dev/gitea.dev "GoDoc")
 [![](https://img.shields.io/github/release/go-gitea/gitea.svg)](https://github.com/go-gitea/gitea/releases/latest "GitHub release")
 [![](https://www.codetriage.com/go-gitea/gitea/badges/users.svg)](https://www.codetriage.com/go-gitea/gitea "Help Contribute to Open Source")
 [![](https://opencollective.com/gitea/tiers/backers/badge.svg?label=backers&color=brightgreen)](https://opencollective.com/gitea "Become a backer/sponsor of gitea")
 [![](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT "License: MIT")
-[![Contribute with Gitpod](https://img.shields.io/badge/Contribute%20with-Gitpod-908a85?logo=gitpod&color=green)](https://gitpod.io/#https://github.com/go-gitea/gitea)
 [![](https://badges.crowdin.net/gitea/localized.svg)](https://translate.gitea.com "Crowdin")
 
 [English](./README.md) | [简体中文](./README.zh-cn.md)
@@ -39,14 +38,10 @@
 
     TAGS="bindata" make build
 
-如果需要 SQLite 支援：
-
-    TAGS="bindata sqlite sqlite_unlock_notify" make build
-
 `build` 目標分為兩個子目標：
 
 - `make backend` 需要 [Go Stable](https://go.dev/dl/)，所需版本在 [go.mod](/go.mod) 中定義。
-- `make frontend` 需要 [Node.js LTS](https://nodejs.org/en/download/) 或更高版本。
+- `make frontend` 需要 [Node.js LTS](https://nodejs.org/en/download/) 或更高版本以及 [pnpm](https://pnpm.io/installation)。
 
 需要互聯網連接來下載 go 和 npm 模塊。從包含預構建前端文件的官方源代碼壓縮包構建時，不會觸發 `frontend` 目標，因此可以在沒有 Node.js 的情況下構建。
 

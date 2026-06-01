@@ -14,33 +14,33 @@ import (
 	"strconv"
 	"strings"
 
-	activities_model "code.gitea.io/gitea/models/activities"
-	asymkey_model "code.gitea.io/gitea/models/asymkey"
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/renderhelper"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/container"
-	"code.gitea.io/gitea/modules/indexer"
-	issue_indexer "code.gitea.io/gitea/modules/indexer/issues"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup/markdown"
-	"code.gitea.io/gitea/modules/optional"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/routers/web/feed"
-	"code.gitea.io/gitea/routers/web/shared/issue"
-	"code.gitea.io/gitea/routers/web/shared/user"
-	"code.gitea.io/gitea/services/context"
-	feed_service "code.gitea.io/gitea/services/feed"
-	issue_service "code.gitea.io/gitea/services/issue"
-	pull_service "code.gitea.io/gitea/services/pull"
+	activities_model "gitea.dev/models/activities"
+	asymkey_model "gitea.dev/models/asymkey"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/organization"
+	"gitea.dev/models/renderhelper"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/base"
+	"gitea.dev/modules/container"
+	"gitea.dev/modules/indexer"
+	issue_indexer "gitea.dev/modules/indexer/issues"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/markup/markdown"
+	"gitea.dev/modules/optional"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
+	"gitea.dev/routers/web/feed"
+	"gitea.dev/routers/web/shared/issue"
+	"gitea.dev/routers/web/shared/user"
+	"gitea.dev/services/context"
+	feed_service "gitea.dev/services/feed"
+	issue_service "gitea.dev/services/issue"
+	pull_service "gitea.dev/services/pull"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
@@ -54,8 +54,8 @@ const (
 	tplProfile    templates.TplName = "user/profile"
 )
 
-// getDashboardContextUser finds out which context user dashboard is being viewed as .
-func getDashboardContextUser(ctx *context.Context) *user_model.User {
+// prepareDashboardContextUserOrgTeams finds out which context user dashboard is being viewed as .
+func prepareDashboardContextUserOrgTeams(ctx *context.Context) *user_model.User {
 	ctxUser := ctx.Doer
 	orgName := ctx.PathParam("org")
 	if len(orgName) > 0 {
@@ -76,7 +76,7 @@ func getDashboardContextUser(ctx *context.Context) *user_model.User {
 
 // Dashboard render the dashboard page
 func Dashboard(ctx *context.Context) {
-	ctxUser := getDashboardContextUser(ctx)
+	ctxUser := prepareDashboardContextUserOrgTeams(ctx)
 	if ctx.Written() {
 		return
 	}
@@ -109,15 +109,7 @@ func Dashboard(ctx *context.Context) {
 		"uid":         uid,
 	}
 
-	if setting.Service.EnableUserHeatmap {
-		data, err := activities_model.GetUserHeatmapDataByUserTeam(ctx, ctxUser, ctx.Org.Team, ctx.Doer)
-		if err != nil {
-			ctx.ServerError("GetUserHeatmapDataByUserTeam", err)
-			return
-		}
-		ctx.Data["HeatmapData"] = data
-		ctx.Data["HeatmapTotalContributions"] = activities_model.GetTotalContributionsInHeatmap(data)
-	}
+	prepareHeatmapURL(ctx)
 
 	feeds, count, err := feed_service.GetFeedsForDashboard(ctx, activities_model.GetFeedsOptions{
 		RequestedUser:   ctxUser,
@@ -156,7 +148,7 @@ func Milestones(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("milestones")
 	ctx.Data["PageIsMilestonesDashboard"] = true
 
-	ctxUser := getDashboardContextUser(ctx)
+	ctxUser := prepareDashboardContextUserOrgTeams(ctx)
 	if ctx.Written() {
 		return
 	}
@@ -309,15 +301,15 @@ func Milestones(ctx *context.Context) {
 		return !showRepoIDs.Contains(v)
 	})
 
-	var pagerCount int
+	var pagerCount int64
 	if isShowClosed {
 		ctx.Data["State"] = "closed"
 		ctx.Data["Total"] = totalMilestoneStats.ClosedCount
-		pagerCount = int(milestoneStats.ClosedCount)
+		pagerCount = milestoneStats.ClosedCount
 	} else {
 		ctx.Data["State"] = "open"
 		ctx.Data["Total"] = totalMilestoneStats.OpenCount
-		pagerCount = int(milestoneStats.OpenCount)
+		pagerCount = milestoneStats.OpenCount
 	}
 
 	ctx.Data["Milestones"] = milestones
@@ -371,7 +363,7 @@ func buildIssueOverview(ctx *context.Context, unitType unit.Type) {
 	// Return with NotFound or ServerError if unsuccessful.
 	// ----------------------------------------------------
 
-	ctxUser := getDashboardContextUser(ctx)
+	ctxUser := prepareDashboardContextUserOrgTeams(ctx)
 	if ctx.Written() {
 		return
 	}
@@ -566,7 +558,7 @@ func buildIssueOverview(ctx *context.Context, unitType unit.Type) {
 		ctx.ServerError("GetIssuesLastCommitStatus", err)
 		return
 	}
-	if !ctx.Repo.CanRead(unit.TypeActions) {
+	if !ctx.Repo.Permission.CanRead(unit.TypeActions) {
 		for key := range commitStatuses {
 			git_model.CommitStatusesHideActionsURL(ctx, commitStatuses[key])
 		}
@@ -586,11 +578,11 @@ func buildIssueOverview(ctx *context.Context, unitType unit.Type) {
 	}
 
 	// Will be posted to ctx.Data.
-	var shownIssues int
+	var shownIssues int64
 	if !isShowClosed {
-		shownIssues = int(issueStats.OpenCount)
+		shownIssues = issueStats.OpenCount
 	} else {
-		shownIssues = int(issueStats.ClosedCount)
+		shownIssues = issueStats.ClosedCount
 	}
 
 	ctx.Data["IsShowClosed"] = isShowClosed
@@ -660,7 +652,12 @@ func ShowSSHKeys(ctx *context.Context) {
 	}
 
 	var buf bytes.Buffer
+	// "authorized_keys" file format: "#" followed by comment line per key
+	buf.WriteString("# Gitea isn't a key server. The keys are exported as the user uploaded and might not have been fully verified.\n")
 	for i := range keys {
+		if keys[i].Type == asymkey_model.KeyTypePrincipal {
+			continue // SSH principal keys are not for signing or authentication
+		}
 		buf.WriteString(keys[i].OmitEmail())
 		buf.WriteString("\n")
 	}
@@ -695,6 +692,8 @@ func ShowGPGKeys(ctx *context.Context) {
 	var buf bytes.Buffer
 
 	headers := make(map[string]string)
+	// https://www.rfc-editor.org/rfc/rfc4880
+	headers["Comment"] = "Gitea isn't a key server. The keys are exported as the user uploaded and might not have been fully verified."
 	if len(failedEntitiesID) > 0 { // If some key need re-import to be exported
 		headers["Note"] = "The keys with the following IDs couldn't be exported and need to be reuploaded " + strings.Join(failedEntitiesID, ", ")
 	} else if len(entities) == 0 {

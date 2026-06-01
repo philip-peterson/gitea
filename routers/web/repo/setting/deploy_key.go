@@ -6,14 +6,14 @@ package setting
 import (
 	"net/http"
 
-	asymkey_model "code.gitea.io/gitea/models/asymkey"
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/web"
-	asymkey_service "code.gitea.io/gitea/services/asymkey"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
+	asymkey_model "gitea.dev/models/asymkey"
+	"gitea.dev/models/db"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/web"
+	asymkey_service "gitea.dev/services/asymkey"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
 )
 
 // DeployKeys render the deploy keys list of a repository page
@@ -76,16 +76,16 @@ func DeployKeysPost(ctx *context.Context) {
 		switch {
 		case asymkey_model.IsErrDeployKeyAlreadyExist(err):
 			ctx.Data["Err_Content"] = true
-			ctx.RenderWithErr(ctx.Tr("repo.settings.key_been_used"), tplDeployKeys, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("repo.settings.key_been_used"), tplDeployKeys, &form)
 		case asymkey_model.IsErrKeyAlreadyExist(err):
 			ctx.Data["Err_Content"] = true
-			ctx.RenderWithErr(ctx.Tr("settings.ssh_key_been_used"), tplDeployKeys, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("settings.ssh_key_been_used"), tplDeployKeys, &form)
 		case asymkey_model.IsErrKeyNameAlreadyUsed(err):
 			ctx.Data["Err_Title"] = true
-			ctx.RenderWithErr(ctx.Tr("repo.settings.key_name_used"), tplDeployKeys, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("repo.settings.key_name_used"), tplDeployKeys, &form)
 		case asymkey_model.IsErrDeployKeyNameAlreadyUsed(err):
 			ctx.Data["Err_Title"] = true
-			ctx.RenderWithErr(ctx.Tr("repo.settings.key_name_used"), tplDeployKeys, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("repo.settings.key_name_used"), tplDeployKeys, &form)
 		default:
 			ctx.ServerError("AddDeployKey", err)
 		}

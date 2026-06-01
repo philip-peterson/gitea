@@ -4,8 +4,8 @@
 package swagger
 
 import (
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/services/forms"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/services/forms"
 )
 
 // not actually a response, just a hack to get go-swagger to include definitions
@@ -169,6 +169,9 @@ type swaggerParameterBodies struct {
 	CreatePullReviewComment api.CreatePullReviewComment
 
 	// in:body
+	CreatePullReviewCommentReplyOptions api.CreatePullReviewCommentReplyOptions
+
+	// in:body
 	SubmitPullReviewOptions api.SubmitPullReviewOptions
 
 	// in:body
@@ -224,6 +227,9 @@ type swaggerParameterBodies struct {
 
 	// in:body
 	UpdateVariableOption api.UpdateVariableOption
+
+	// in:body
+	EditActionRunnerOption api.EditActionRunnerOption
 
 	// in:body
 	LockIssueOption api.LockIssueOption

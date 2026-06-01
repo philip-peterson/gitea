@@ -7,21 +7,21 @@ import (
 	"context"
 	"fmt"
 
-	git_model "code.gitea.io/gitea/models/git"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/cache"
-	"code.gitea.io/gitea/modules/cachegroup"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/services/gitdiff"
+	git_model "gitea.dev/models/git"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/cache"
+	"gitea.dev/modules/cachegroup"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/gitdiff"
 )
 
 // ToAPIPullRequest assumes following fields have been assigned with valid values:
@@ -63,11 +63,11 @@ func ToAPIPullRequest(ctx context.Context, pr *issues_model.PullRequest, doer *u
 
 	repoUserPerm, err := cache.GetWithContextCache(ctx, cachegroup.RepoUserPermission, fmt.Sprintf("%d-%d", pr.BaseRepoID, doerID),
 		func(ctx context.Context, _ string) (access_model.Permission, error) {
-			return access_model.GetUserRepoPermission(ctx, pr.BaseRepo, doer)
+			return access_model.GetDoerRepoPermission(ctx, pr.BaseRepo, doer)
 		},
 	)
 	if err != nil {
-		log.Error("GetUserRepoPermission[%d]: %v", pr.BaseRepoID, err)
+		log.Error("GetDoerRepoPermission[%d]: %v", pr.BaseRepoID, err)
 		repoUserPerm.AccessMode = perm.AccessModeNone
 	}
 
@@ -97,6 +97,7 @@ func ToAPIPullRequest(ctx context.Context, pr *issues_model.PullRequest, doer *u
 		Created:        pr.Issue.CreatedUnix.AsTimePtr(),
 		Updated:        pr.Issue.UpdatedUnix.AsTimePtr(),
 		PinOrder:       util.Iif(apiIssue.PinOrder == -1, 0, apiIssue.PinOrder),
+		ContentVersion: apiIssue.ContentVersion,
 
 		// output "[]" rather than null to align to github outputs
 		RequestedReviewers:      []*api.User{},
@@ -181,9 +182,9 @@ func ToAPIPullRequest(ctx context.Context, pr *issues_model.PullRequest, doer *u
 	}
 
 	if pr.HeadRepo != nil && pr.Flow == issues_model.PullRequestFlowGithub {
-		p, err := access_model.GetUserRepoPermission(ctx, pr.HeadRepo, doer)
+		p, err := access_model.GetDoerRepoPermission(ctx, pr.HeadRepo, doer)
 		if err != nil {
-			log.Error("GetUserRepoPermission[%d]: %v", pr.HeadRepoID, err)
+			log.Error("GetDoerRepoPermission[%d]: %v", pr.HeadRepoID, err)
 			p.AccessMode = perm.AccessModeNone
 		}
 
@@ -334,9 +335,9 @@ func ToAPIPullRequests(ctx context.Context, baseRepo *repo_model.Repository, prs
 	}
 	defer gitRepo.Close()
 
-	baseRepoPerm, err := access_model.GetUserRepoPermission(ctx, baseRepo, doer)
+	baseRepoPerm, err := access_model.GetDoerRepoPermission(ctx, baseRepo, doer)
 	if err != nil {
-		log.Error("GetUserRepoPermission[%d]: %v", baseRepo.ID, err)
+		log.Error("GetDoerRepoPermission[%d]: %v", baseRepo.ID, err)
 		baseRepoPerm.AccessMode = perm.AccessModeNone
 	}
 
@@ -372,6 +373,7 @@ func ToAPIPullRequests(ctx context.Context, baseRepo *repo_model.Repository, prs
 			Created:        pr.Issue.CreatedUnix.AsTimePtr(),
 			Updated:        pr.Issue.UpdatedUnix.AsTimePtr(),
 			PinOrder:       util.Iif(apiIssue.PinOrder == -1, 0, apiIssue.PinOrder),
+			ContentVersion: apiIssue.ContentVersion,
 
 			AllowMaintainerEdit: pr.AllowMaintainerEdit,
 
@@ -435,9 +437,9 @@ func ToAPIPullRequests(ctx context.Context, baseRepo *repo_model.Repository, prs
 				apiPullRequest.Head.Ref = pr.HeadBranch
 			}
 			if pr.HeadRepoID != pr.BaseRepoID {
-				p, err := access_model.GetUserRepoPermission(ctx, pr.HeadRepo, doer)
+				p, err := access_model.GetDoerRepoPermission(ctx, pr.HeadRepo, doer)
 				if err != nil {
-					log.Error("GetUserRepoPermission[%d]: %v", pr.HeadRepoID, err)
+					log.Error("GetDoerRepoPermission[%d]: %v", pr.HeadRepoID, err)
 					p.AccessMode = perm.AccessModeNone
 				}
 				apiPullRequest.Head.Repository = ToRepo(ctx, pr.HeadRepo, p)

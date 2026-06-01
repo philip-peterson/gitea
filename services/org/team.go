@@ -5,21 +5,22 @@ package org
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/organization"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/graceful"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/util"
-	repo_service "code.gitea.io/gitea/services/repository"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/organization"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/graceful"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/util"
+	repo_service "gitea.dev/services/repository"
 
 	"xorm.io/builder"
 )
@@ -306,19 +307,19 @@ func removeTeamMember(ctx context.Context, team *organization.Team, user *user_m
 		return err
 	}
 
-	// Delete access to team repositories.
+	// Delete access to team repositories. If any user or repo is missing, we can continue.
 	for _, repo := range repos {
-		if err := access_model.RecalculateUserAccess(ctx, repo, user.ID); err != nil {
+		if err := access_model.RecalculateUserAccess(ctx, repo, user.ID); err != nil && !errors.Is(err, util.ErrNotExist) {
 			return err
 		}
 
-		// Remove watches from now unaccessible
-		if err := repo_service.ReconsiderWatches(ctx, repo, user); err != nil {
+		// Remove watches from now inaccessible
+		if err := repo_service.ReconsiderWatches(ctx, repo, user); err != nil && !errors.Is(err, util.ErrNotExist) {
 			return err
 		}
 
-		// Remove issue assignments from now unaccessible
-		if err := repo_service.ReconsiderRepoIssuesAssignee(ctx, repo, user); err != nil {
+		// Remove issue assignments from now inaccessible
+		if err := repo_service.ReconsiderRepoIssuesAssignee(ctx, repo, user); err != nil && !errors.Is(err, util.ErrNotExist) {
 			return err
 		}
 	}

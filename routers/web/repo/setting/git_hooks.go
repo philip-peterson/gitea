@@ -6,8 +6,9 @@ package setting
 import (
 	"net/http"
 
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/services/context"
+	"gitea.dev/modules/git"
+	"gitea.dev/routers/web/repo"
+	"gitea.dev/services/context"
 )
 
 // GitHooks hooks of a repository
@@ -41,6 +42,7 @@ func GitHooksEdit(ctx *context.Context) {
 		return
 	}
 	ctx.Data["Hook"] = hook
+	ctx.Data["CodeEditorConfig"] = repo.CodeEditorConfig{Filename: name + ".sh", IndentStyle: "tab", TabWidth: 4}
 	ctx.HTML(http.StatusOK, tplGithookEdit)
 }
 

@@ -1,29 +1,14 @@
-export type MentionValue = {
+export type IntervalId = ReturnType<typeof setInterval>;
+
+export type Intent = 'error' | 'warning' | 'info';
+
+export type Mention = {
   key: string,
   value: string,
   name: string,
   fullname: string,
   avatar: string,
 };
-
-export type Config = {
-  appUrl: string,
-  appSubUrl: string,
-  assetVersionEncoded: string,
-  assetUrlPrefix: string,
-  runModeIsProd: boolean,
-  customEmojis: Record<string, string>,
-  pageData: Record<string, any>,
-  notificationSettings: Record<string, any>,
-  enableTimeTracking: boolean,
-  mentionValues?: MentionValue[],
-  mermaidMaxSourceCharacters: number,
-  i18n: Record<string, string>,
-};
-
-export type IntervalId = ReturnType<typeof setInterval>;
-
-export type Intent = 'error' | 'warning' | 'info';
 
 export type RequestData = string | FormData | URLSearchParams | Record<string, any>;
 
@@ -57,12 +42,14 @@ export type Issue = {
   body: string,
   state: 'open' | 'closed',
   created_at: string,
+  html_url: string,
   pull_request?: {
     draft: boolean;
     merged: boolean;
   },
   repository: {
     full_name: string,
+    html_url: string,
   },
   labels: Array<string>,
 };

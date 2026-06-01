@@ -18,6 +18,7 @@ linters:
     - mirror
     - modernize
     - nakedret
+    - nilnil
     - nolintlint
     - perfsprint
     - revive
@@ -42,12 +43,22 @@ linters:
               desc: use os or io instead
             - pkg: golang.org/x/exp
               desc: it's experimental and unreliable
-            - pkg: code.gitea.io/gitea/modules/git/internal
+            - pkg: gitea.dev/modules/git/internal
               desc: do not use the internal package, use AddXxx function instead
             - pkg: gopkg.in/ini.v1
               desc: do not use the ini package, use gitea's config system instead
             - pkg: gitea.com/go-chi/cache
               desc: do not use the go-chi cache package, use gitea's cache system
+            - pkg: github.com/pkg/errors
+              desc: use builtin errors package instead
+        migrations:
+          files:
+            - '**/models/migrations/**/*.go'
+          deny:
+            - pkg: gitea.dev/models$
+              desc: migrations must not depend on the models package
+            - pkg: gitea.dev/modules/structs
+              desc: migrations must not depend on modules/structs (API structures change over time)
     nolintlint:
       allow-unused: false
       require-explanation: true
@@ -62,35 +73,24 @@ linters:
     revive:
       severity: error
       rules:
-        - name: atomic
-        - name: bare-return
         - name: blank-imports
         - name: constant-logical-expr
         - name: context-as-argument
         - name: context-keys-type
         - name: dot-imports
-        - name: duplicated-imports
         - name: empty-lines
-        - name: error-naming
         - name: error-return
         - name: error-strings
-        - name: errorf
         - name: exported
         - name: identical-branches
         - name: if-return
         - name: increment-decrement
-        - name: indent-error-flow
         - name: modifies-value-receiver
         - name: package-comments
-        - name: range
-        - name: receiver-naming
         - name: redefines-builtin-id
-        - name: string-of-int
         - name: superfluous-else
         - name: time-naming
-        - name: unconditional-recursion
         - name: unexported-return
-        - name: unreachable-code
         - name: var-declaration
         - name: var-naming
           arguments:
@@ -128,16 +128,12 @@ linters:
       - linters:
           - dupl
           - errcheck
-          - gocyclo
-          - gosec
           - staticcheck
           - unparam
         path: _test\.go
       - linters:
           - dupl
           - errcheck
-          - gocyclo
-          - gosec
         path: models/migrations/v
       - linters:
           - forbidigo
@@ -149,12 +145,8 @@ linters:
           - gocritic
         text: (?i)`ID' should not be capitalized
       - linters:
-          - deadcode
           - unused
         text: (?i)swagger
-      - linters:
-          - staticcheck
-        text: (?i)argument x is overwritten before first use
       - linters:
           - gocritic
         text: '(?i)commentFormatting: put a space between `//` and comment text'
@@ -174,9 +166,16 @@ issues:
   max-same-issues: 0
 formatters:
   enable:
-    - gofmt
+    - gci
     - gofumpt
   settings:
+    gci:
+      custom-order: true
+      sections:
+        - standard
+        - prefix(gitea.dev)
+        - blank
+        - default
     gofumpt:
       extra-rules: true
   exclusions:
@@ -186,9 +185,6 @@ formatters:
       - .venv
       - public
       - web_src
-      - third_party$
-      - builtin$
-      - examples$
 
 run:
   timeout: 10m

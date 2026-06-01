@@ -8,23 +8,23 @@ import (
 	"errors"
 	"net/http"
 
-	activities_model "code.gitea.io/gitea/models/activities"
-	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	unit_model "code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/log"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/routers/api/v1/user"
-	"code.gitea.io/gitea/routers/api/v1/utils"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/convert"
-	feed_service "code.gitea.io/gitea/services/feed"
-	org_service "code.gitea.io/gitea/services/org"
-	repo_service "code.gitea.io/gitea/services/repository"
+	activities_model "gitea.dev/models/activities"
+	"gitea.dev/models/organization"
+	"gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	unit_model "gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/log"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/web"
+	"gitea.dev/routers/api/v1/user"
+	"gitea.dev/routers/api/v1/utils"
+	"gitea.dev/services/context"
+	"gitea.dev/services/convert"
+	feed_service "gitea.dev/services/feed"
+	org_service "gitea.dev/services/org"
+	repo_service "gitea.dev/services/repository"
 )
 
 // ListTeams list all the teams of an organization
@@ -54,8 +54,9 @@ func ListTeams(ctx *context.APIContext) {
 	//   "404":
 	//     "$ref": "#/responses/notFound"
 
+	listOptions := utils.GetListOptions(ctx)
 	teams, count, err := organization.SearchTeam(ctx, &organization.SearchTeamOptions{
-		ListOptions: utils.GetListOptions(ctx),
+		ListOptions: listOptions,
 		OrgID:       ctx.Org.Organization.ID,
 	})
 	if err != nil {
@@ -69,6 +70,7 @@ func ListTeams(ctx *context.APIContext) {
 		return
 	}
 
+	ctx.SetLinkHeader(count, listOptions.PageSize)
 	ctx.SetTotalCountHeader(count)
 	ctx.JSON(http.StatusOK, apiTeams)
 }
@@ -93,8 +95,9 @@ func ListUserTeams(ctx *context.APIContext) {
 	//   "200":
 	//     "$ref": "#/responses/TeamList"
 
+	listOptions := utils.GetListOptions(ctx)
 	teams, count, err := organization.SearchTeam(ctx, &organization.SearchTeamOptions{
-		ListOptions: utils.GetListOptions(ctx),
+		ListOptions: listOptions,
 		UserID:      ctx.Doer.ID,
 	})
 	if err != nil {
@@ -108,6 +111,7 @@ func ListUserTeams(ctx *context.APIContext) {
 		return
 	}
 
+	ctx.SetLinkHeader(count, listOptions.PageSize)
 	ctx.SetTotalCountHeader(count)
 	ctx.JSON(http.StatusOK, apiTeams)
 }
@@ -206,7 +210,7 @@ func CreateTeam(ctx *context.APIContext) {
 	//   "422":
 	//     "$ref": "#/responses/validationError"
 	form := web.GetForm(ctx).(*api.CreateTeamOption)
-	teamPermission := perm.ParseAccessMode(form.Permission, perm.AccessModeNone, perm.AccessModeAdmin)
+	teamPermission := perm.ParseAccessMode(string(form.Permission), perm.AccessModeNone, perm.AccessModeAdmin)
 	team := &organization.Team{
 		OrgID:                   ctx.Org.Organization.ID,
 		Name:                    form.Name,
@@ -220,7 +224,7 @@ func CreateTeam(ctx *context.APIContext) {
 		if len(form.UnitsMap) > 0 {
 			attachTeamUnitsMap(team, form.UnitsMap)
 		} else if len(form.Units) > 0 {
-			unitPerm := perm.ParseAccessMode(form.Permission, perm.AccessModeRead, perm.AccessModeWrite)
+			unitPerm := perm.ParseAccessMode(string(form.Permission), perm.AccessModeRead, perm.AccessModeWrite)
 			attachTeamUnits(team, unitPerm, form.Units)
 		} else {
 			ctx.APIErrorInternal(errors.New("units permission should not be empty"))
@@ -294,7 +298,7 @@ func EditTeam(ctx *context.APIContext) {
 	isAuthChanged := false
 	isIncludeAllChanged := false
 	if !team.IsOwnerTeam() && len(form.Permission) != 0 {
-		teamPermission := perm.ParseAccessMode(form.Permission, perm.AccessModeNone, perm.AccessModeAdmin)
+		teamPermission := perm.ParseAccessMode(string(form.Permission), perm.AccessModeNone, perm.AccessModeAdmin)
 		if team.AccessMode != teamPermission {
 			isAuthChanged = true
 			team.AccessMode = teamPermission
@@ -310,7 +314,7 @@ func EditTeam(ctx *context.APIContext) {
 		if len(form.UnitsMap) > 0 {
 			attachTeamUnitsMap(team, form.UnitsMap)
 		} else if len(form.Units) > 0 {
-			unitPerm := perm.ParseAccessMode(form.Permission, perm.AccessModeRead, perm.AccessModeWrite)
+			unitPerm := perm.ParseAccessMode(string(form.Permission), perm.AccessModeRead, perm.AccessModeWrite)
 			attachTeamUnits(team, unitPerm, form.Units)
 		}
 	} else {
@@ -392,8 +396,9 @@ func GetTeamMembers(ctx *context.APIContext) {
 		return
 	}
 
+	listOptions := utils.GetListOptions(ctx)
 	teamMembers, err := organization.GetTeamMembers(ctx, &organization.SearchMembersOptions{
-		ListOptions: utils.GetListOptions(ctx),
+		ListOptions: listOptions,
 		TeamID:      ctx.Org.Team.ID,
 	})
 	if err != nil {
@@ -406,6 +411,7 @@ func GetTeamMembers(ctx *context.APIContext) {
 		members[i] = convert.ToUser(ctx, member, ctx.Doer)
 	}
 
+	ctx.SetLinkHeader(int64(ctx.Org.Team.NumMembers), listOptions.PageSize)
 	ctx.SetTotalCountHeader(int64(ctx.Org.Team.NumMembers))
 	ctx.JSON(http.StatusOK, members)
 }
@@ -559,8 +565,9 @@ func GetTeamRepos(ctx *context.APIContext) {
 	//     "$ref": "#/responses/notFound"
 
 	team := ctx.Org.Team
+	listOptions := utils.GetListOptions(ctx)
 	teamRepos, err := repo_model.GetTeamRepositories(ctx, &repo_model.SearchTeamRepoOptions{
-		ListOptions: utils.GetListOptions(ctx),
+		ListOptions: listOptions,
 		TeamID:      team.ID,
 	})
 	if err != nil {
@@ -569,13 +576,14 @@ func GetTeamRepos(ctx *context.APIContext) {
 	}
 	repos := make([]*api.Repository, len(teamRepos))
 	for i, repo := range teamRepos {
-		permission, err := access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
+		permission, err := access_model.GetDoerRepoPermission(ctx, repo, ctx.Doer)
 		if err != nil {
 			ctx.APIErrorInternal(err)
 			return
 		}
 		repos[i] = convert.ToRepo(ctx, repo, permission)
 	}
+	ctx.SetLinkHeader(int64(team.NumRepos), listOptions.PageSize)
 	ctx.SetTotalCountHeader(int64(team.NumRepos))
 	ctx.JSON(http.StatusOK, repos)
 }
@@ -620,7 +628,7 @@ func GetTeamRepo(ctx *context.APIContext) {
 		return
 	}
 
-	permission, err := access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
+	permission, err := access_model.GetDoerRepoPermission(ctx, repo, ctx.Doer)
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
@@ -798,7 +806,7 @@ func SearchTeam(ctx *context.APIContext) {
 		ListOptions: listOptions,
 	}
 
-	// Only admin is allowd to search for all teams
+	// Only admin is allowed to search for all teams
 	if !ctx.Doer.IsAdmin {
 		opts.UserID = ctx.Doer.ID
 	}
@@ -819,7 +827,7 @@ func SearchTeam(ctx *context.APIContext) {
 		return
 	}
 
-	ctx.SetLinkHeader(int(maxResults), listOptions.PageSize)
+	ctx.SetLinkHeader(maxResults, listOptions.PageSize)
 	ctx.SetTotalCountHeader(maxResults)
 	ctx.JSON(http.StatusOK, map[string]any{
 		"ok":   true,
@@ -874,7 +882,7 @@ func ListTeamActivityFeeds(ctx *context.APIContext) {
 		ctx.APIErrorInternal(err)
 		return
 	}
+	ctx.SetLinkHeader(count, listOptions.PageSize)
 	ctx.SetTotalCountHeader(count)
-
 	ctx.JSON(http.StatusOK, convert.ToActivities(ctx, feeds, ctx.Doer))
 }

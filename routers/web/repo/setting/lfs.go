@@ -14,22 +14,22 @@ import (
 	"strconv"
 	"strings"
 
-	git_model "code.gitea.io/gitea/models/git"
-	"code.gitea.io/gitea/modules/charset"
-	"code.gitea.io/gitea/modules/container"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/attribute"
-	"code.gitea.io/gitea/modules/git/pipeline"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/lfs"
-	"code.gitea.io/gitea/modules/log"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/storage"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/typesniffer"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/services/context"
+	git_model "gitea.dev/models/git"
+	"gitea.dev/modules/charset"
+	"gitea.dev/modules/container"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/attribute"
+	"gitea.dev/modules/git/pipeline"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/lfs"
+	"gitea.dev/modules/log"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/storage"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/typesniffer"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/context"
 )
 
 const (
@@ -54,7 +54,7 @@ func LFSFiles(ctx *context.Context) {
 	}
 	ctx.Data["Total"] = total
 
-	pager := context.NewPagination(int(total), setting.UI.ExplorePagingNum, page, 5)
+	pager := context.NewPagination(total, setting.UI.ExplorePagingNum, page, 5)
 	ctx.Data["Title"] = ctx.Tr("repo.settings.lfs")
 	ctx.Data["PageIsSettingsLFS"] = true
 	lfsMetaObjects, err := git_model.GetLFSMetaObjects(ctx, ctx.Repo.Repository.ID, pager.Paginater.Current(), setting.UI.ExplorePagingNum)
@@ -83,7 +83,7 @@ func LFSLocks(ctx *context.Context) {
 	}
 	ctx.Data["Total"] = total
 
-	pager := context.NewPagination(int(total), setting.UI.ExplorePagingNum, page, 5)
+	pager := context.NewPagination(total, setting.UI.ExplorePagingNum, page, 5)
 	ctx.Data["Title"] = ctx.Tr("repo.settings.lfs_locks")
 	ctx.Data["PageIsSettingsLFS"] = true
 	lfsLocks, err := git_model.GetLFSLockByRepoID(ctx, ctx.Repo.Repository.ID, pager.Paginater.Current(), setting.UI.ExplorePagingNum)
@@ -301,13 +301,13 @@ func LFSFileGet(ctx *context.Context) {
 			if index != len(lines)-1 {
 				line += "\n"
 			}
-			output.WriteString(fmt.Sprintf(`<li class="L%d" rel="L%d">%s</li>`, index+1, index+1, line))
+			fmt.Fprintf(&output, `<li class="L%d" rel="L%d">%s</li>`, index+1, index+1, line)
 		}
 		ctx.Data["FileContent"] = gotemplate.HTML(output.String())
 
 		output.Reset()
 		for i := 0; i < len(lines); i++ {
-			output.WriteString(fmt.Sprintf(`<span id="L%d">%d</span>`, i+1, i+1))
+			fmt.Fprintf(&output, `<span id="L%d">%d</span>`, i+1, i+1)
 		}
 		ctx.Data["LineNums"] = gotemplate.HTML(output.String())
 
@@ -407,7 +407,9 @@ func LFSPointerFiles(ctx *context.Context) {
 	err = func() error {
 		pointerChan := make(chan lfs.PointerBlob)
 		errChan := make(chan error, 1)
-		go lfs.SearchPointerBlobs(ctx, ctx.Repo.GitRepo, pointerChan, errChan)
+		go func() {
+			errChan <- lfs.SearchPointerBlobs(ctx, ctx.Repo.GitRepo, pointerChan)
+		}()
 
 		numPointers := 0
 		var numAssociated, numNoExist, numAssociatable int
@@ -483,11 +485,6 @@ func LFSPointerFiles(ctx *context.Context) {
 			results = append(results, result)
 		}
 
-		err, has := <-errChan
-		if has {
-			return err
-		}
-
 		ctx.Data["Pointers"] = results
 		ctx.Data["NumPointers"] = numPointers
 		ctx.Data["NumAssociated"] = numAssociated
@@ -495,7 +492,8 @@ func LFSPointerFiles(ctx *context.Context) {
 		ctx.Data["NumNoExist"] = numNoExist
 		ctx.Data["NumNotAssociated"] = numPointers - numAssociated
 
-		return nil
+		err := <-errChan
+		return err
 	}()
 	if err != nil {
 		ctx.ServerError("LFSPointerFiles", err)

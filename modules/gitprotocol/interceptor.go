@@ -94,8 +94,10 @@ func ReceivePack(r io.Reader, w io.Writer, fn InterceptFunc, runGit func(io.Read
 // It returns whether side-band-64k was negotiated (needed only for error responses).
 //
 // When push-options was negotiated, the client sends after the first flush:
-//   zero or more "push-option ..." pkt-lines
-//   another flush
+//
+//	zero or more "push-option ..." pkt-lines
+//	another flush
+//
 // We simply consume this section so StreamPackfile sees the real PACK magic.
 func readReceivePackHeader(r io.Reader) (useSideband bool, err error) {
 	hasPushOptions := false
@@ -158,6 +160,28 @@ func writeErrorResponse(w io.Writer, msg string, useSideband bool) error {
 			return err
 		}
 	} else {
+		if err := WritePktLine(w, line); err != nil {
+			return err
+		}
+	}
+	return WriteFlushPkt(w)
+}
+
+// WriteReceivePackError writes a fatal error response for a receive-pack
+// session. When useSideband is true it emits a sideband-3 packet (the error
+// channel), which git clients reliably display to the user. Otherwise it falls
+// back to a plain "unpack error ..." pkt-line + flush.
+// Intended for use when git receive-pack failed before writing any response
+// bytes, so the client does not see a confusing "unexpected disconnect".
+func WriteReceivePackError(w io.Writer, msg string, useSideband bool) error {
+	if useSideband {
+		// sideband channel 3: PKT-LINE( \x03 <message> )
+		payload := append([]byte{0x03}, []byte(msg+"\n")...)
+		if err := WritePktLine(w, payload); err != nil {
+			return err
+		}
+	} else {
+		line := []byte("unpack error " + msg + "\n")
 		if err := WritePktLine(w, line); err != nil {
 			return err
 		}

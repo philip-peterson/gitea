@@ -8,16 +8,16 @@ import (
 	"fmt"
 	"strings"
 
-	git_model "code.gitea.io/gitea/models/git"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	asymkey_service "code.gitea.io/gitea/services/asymkey"
+	git_model "gitea.dev/models/git"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	asymkey_service "gitea.dev/services/asymkey"
 )
 
 // ErrUserCannotCommit represents "UserCannotCommit" kind of error.
@@ -164,20 +164,15 @@ func ApplyDiffPatch(ctx context.Context, repo *repo_model.Repository, doer *user
 		}
 	}
 
-	stdout := &strings.Builder{}
-	stderr := &strings.Builder{}
-
 	cmdApply := gitcmd.NewCommand("apply", "--index", "--recount", "--cached", "--ignore-whitespace", "--whitespace=fix", "--binary")
 	if git.DefaultFeatures().CheckVersionAtLeast("2.32") {
 		cmdApply.AddArguments("-3")
 	}
 
 	if err := cmdApply.WithDir(t.basePath).
-		WithStdout(stdout).
-		WithStderr(stderr).
-		WithStdin(strings.NewReader(opts.Content)).
-		Run(ctx); err != nil {
-		return nil, fmt.Errorf("Error: Stdout: %s\nStderr: %s\nErr: %w", stdout.String(), stderr.String(), err)
+		WithStdinBytes([]byte(opts.Content)).
+		RunWithStderr(ctx); err != nil {
+		return nil, fmt.Errorf("git apply error: %w", err)
 	}
 
 	// Now write the tree

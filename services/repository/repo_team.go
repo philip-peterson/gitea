@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 
-	"code.gitea.io/gitea/models/db"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/organization"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/modules/setting"
+	"gitea.dev/models/db"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/organization"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/modules/setting"
 )
 
 // TeamAddRepository adds new repository to team of organization.
@@ -108,7 +108,7 @@ func removeAllRepositoriesFromTeam(ctx context.Context, t *organization.Team) (e
 			return err
 		}
 
-		// Remove watches from all users and now unaccessible repos
+		// Remove watches from all users and now inaccessible repos
 		for _, user := range t.Members {
 			has, err := access_model.HasAnyUnitAccess(ctx, user.ID, repo)
 			if err != nil {

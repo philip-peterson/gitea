@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/organization"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/timeutil"
-	org_service "code.gitea.io/gitea/services/org"
+	"gitea.dev/models/auth"
+	"gitea.dev/models/db"
+	"gitea.dev/models/organization"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/timeutil"
+	org_service "gitea.dev/services/org"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +61,24 @@ func TestDeleteUser(t *testing.T) {
 
 	org := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 3})
 	assert.Error(t, DeleteUser(t.Context(), org, false))
+}
+
+func TestDeleteUserUnlinkedAttachments(t *testing.T) {
+	t.Run("DeleteExisting", func(t *testing.T) {
+		assert.NoError(t, unittest.PrepareTestDatabase())
+		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 8})
+		unittest.AssertExistsAndLoadBean(t, &repo_model.Attachment{ID: 10})
+
+		assert.NoError(t, deleteUserUnlinkedAttachments(t.Context(), user))
+		unittest.AssertNotExistsBean(t, &repo_model.Attachment{ID: 10})
+	})
+
+	t.Run("NoUnlinkedAttachments", func(t *testing.T) {
+		assert.NoError(t, unittest.PrepareTestDatabase())
+		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2})
+
+		assert.NoError(t, deleteUserUnlinkedAttachments(t.Context(), user))
+	})
 }
 
 func TestPurgeUser(t *testing.T) {

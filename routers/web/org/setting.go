@@ -5,28 +5,29 @@
 package org
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 
-	"code.gitea.io/gitea/models/db"
-	packages_model "code.gitea.io/gitea/models/packages"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/models/webhook"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/optional"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/modules/web"
-	shared_user "code.gitea.io/gitea/routers/web/shared/user"
-	user_setting "code.gitea.io/gitea/routers/web/user/setting"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
-	org_service "code.gitea.io/gitea/services/org"
-	user_service "code.gitea.io/gitea/services/user"
+	"gitea.dev/models/db"
+	packages_model "gitea.dev/models/packages"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/models/webhook"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/optional"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
+	"gitea.dev/modules/web"
+	shared_user "gitea.dev/routers/web/shared/user"
+	user_setting "gitea.dev/routers/web/user/setting"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
+	org_service "gitea.dev/services/org"
+	user_service "gitea.dev/services/user"
 )
 
 const (
@@ -69,24 +70,25 @@ func SettingsPost(ctx *context.Context) {
 	}
 
 	org := ctx.Org.Organization
-
-	if form.Email != "" {
-		if err := user_service.ReplacePrimaryEmailAddress(ctx, org.AsUser(), form.Email); err != nil {
+	if err := org_service.UpdateOrgEmailAddress(ctx, org, form.Email); err != nil {
+		if errors.Is(err, util.ErrInvalidArgument) {
 			ctx.Data["Err_Email"] = true
-			ctx.RenderWithErr(ctx.Tr("form.email_invalid"), tplSettingsOptions, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.email_invalid"), tplSettingsOptions, &form)
 			return
 		}
+		ctx.ServerError("UpdateOrgEmailAddress", err)
+		return
 	}
 
 	opts := &user_service.UpdateOptions{
-		FullName:                  optional.Some(form.FullName),
-		Description:               optional.Some(form.Description),
-		Website:                   optional.Some(form.Website),
-		Location:                  optional.Some(form.Location),
-		RepoAdminChangeTeamAccess: optional.Some(form.RepoAdminChangeTeamAccess),
+		FullName:                  optional.FromPtr(form.FullName),
+		Description:               optional.FromPtr(form.Description),
+		Website:                   optional.FromPtr(form.Website),
+		Location:                  optional.FromPtr(form.Location),
+		RepoAdminChangeTeamAccess: optional.FromPtr(form.RepoAdminChangeTeamAccess),
 	}
 	if ctx.Doer.IsAdmin {
-		opts.MaxRepoCreation = optional.Some(form.MaxRepoCreation)
+		opts.MaxRepoCreation = optional.FromPtr(form.MaxRepoCreation)
 	}
 
 	if err := user_service.UpdateUser(ctx, org.AsUser(), opts); err != nil {

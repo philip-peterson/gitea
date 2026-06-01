@@ -13,18 +13,19 @@ import (
 	"net/url"
 	"strings"
 
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/cache"
-	"code.gitea.io/gitea/modules/httpcache"
-	"code.gitea.io/gitea/modules/session"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/translation"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/modules/web/middleware"
-	web_types "code.gitea.io/gitea/modules/web/types"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/cache"
+	"gitea.dev/modules/httpcache"
+	"gitea.dev/modules/reqctx"
+	"gitea.dev/modules/session"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/translation"
+	"gitea.dev/modules/util"
+	"gitea.dev/modules/web"
+	"gitea.dev/modules/web/middleware"
+	web_types "gitea.dev/modules/web/types"
 )
 
 // Render represents a template render
@@ -62,8 +63,6 @@ type Context struct {
 	Package *Package
 }
 
-type TemplateContext map[string]any
-
 func init() {
 	web.RegisterResponseStatusProvider[*Base](func(req *http.Request) web_types.ResponseStatusProvider {
 		return req.Context().Value(BaseContextKey).(*Base)
@@ -99,12 +98,14 @@ func GetValidateContext(req *http.Request) (ctx *ValidateContext) {
 	return ctx
 }
 
-func NewTemplateContextForWeb(ctx *Context) TemplateContext {
-	tmplCtx := NewTemplateContext(ctx, ctx.Req)
-	tmplCtx["Locale"] = ctx.Base.Locale
+func NewTemplateContextForWeb(ctx reqctx.RequestContext, req *http.Request, locale translation.Locale) TemplateContext {
+	tmplCtx := NewTemplateContext(ctx, req)
+	tmplCtx["Locale"] = locale
 	tmplCtx["AvatarUtils"] = templates.NewAvatarUtils(ctx)
 	tmplCtx["RenderUtils"] = templates.NewRenderUtils(ctx)
-	tmplCtx["RootData"] = ctx.Data
+	tmplCtx["MiscUtils"] = templates.NewMiscUtils(ctx)
+	tmplCtx["ActionsUtils"] = templates.NewActionsUtils(ctx)
+	tmplCtx["RootData"] = ctx.GetData()
 	tmplCtx["Consts"] = map[string]any{
 		"RepoUnitTypeCode":            unit.TypeCode,
 		"RepoUnitTypeIssues":          unit.TypeIssues,
@@ -128,18 +129,36 @@ func NewWebContext(base *Base, render Render, session session.Store) *Context {
 
 		Cache: cache.GetCache(),
 		Link:  setting.AppSubURL + strings.TrimSuffix(base.Req.URL.EscapedPath(), "/"),
-		Repo:  &Repository{PullRequest: &PullRequest{}},
+		Repo:  &Repository{},
 		Org:   &Organization{},
 	}
-	ctx.TemplateContext = NewTemplateContextForWeb(ctx)
+	ctx.TemplateContext = NewTemplateContextForWeb(ctx, ctx.Base.Req, ctx.Base.Locale)
 	ctx.Flash = &middleware.Flash{DataStore: ctx, Values: url.Values{}}
 	ctx.SetContextValue(WebContextKey, ctx)
 	return ctx
 }
 
+func ContexterInstallPage(data map[string]any) func(next http.Handler) http.Handler {
+	rnd := templates.PageRenderer()
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			base := NewBaseContext(resp, req)
+			ctx := NewWebContext(base, rnd, session.GetContextSession(req))
+			ctx.Data.MergeFrom(middleware.CommonTemplateContextData())
+			ctx.Data.MergeFrom(reqctx.ContextData{
+				"Title":         ctx.Locale.Tr("install.install"),
+				"PageIsInstall": true,
+				"AllLangs":      translation.AllLangs(),
+			})
+			ctx.Data.MergeFrom(data)
+			next.ServeHTTP(resp, ctx.Req)
+		})
+	}
+}
+
 // Contexter initializes a classic context for a request.
 func Contexter() func(next http.Handler) http.Handler {
-	rnd := templates.HTMLRenderer()
+	rnd := templates.PageRenderer()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 			base := NewBaseContext(resp, req)
@@ -178,7 +197,6 @@ func Contexter() func(next http.Handler) http.Handler {
 			}
 
 			httpcache.SetCacheControlInHeader(ctx.Resp.Header(), &httpcache.CacheControlOptions{NoTransform: true})
-			ctx.Resp.Header().Set(`X-Frame-Options`, setting.CORSConfig.XFrameOptions)
 
 			ctx.Data["SystemConfig"] = setting.Config()
 
@@ -189,7 +207,6 @@ func Contexter() func(next http.Handler) http.Handler {
 			ctx.Data["DisableStars"] = setting.Repository.DisableStars
 			ctx.Data["EnableActions"] = setting.Actions.Enabled && !unit.TypeActions.UnitGlobalDisabled()
 
-			ctx.Data["ManifestData"] = setting.ManifestData
 			ctx.Data["AllLangs"] = translation.AllLangs()
 
 			next.ServeHTTP(ctx.Resp, ctx.Req)

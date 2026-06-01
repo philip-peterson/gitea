@@ -6,12 +6,12 @@ package issues_test
 import (
 	"testing"
 
-	"code.gitea.io/gitea/models/db"
-	issues_model "code.gitea.io/gitea/models/issues"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/timeutil"
+	"gitea.dev/models/db"
+	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/timeutil"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -254,7 +254,7 @@ func TestGetLabelsByIssueID(t *testing.T) {
 func TestUpdateLabel(t *testing.T) {
 	assert.NoError(t, unittest.PrepareTestDatabase())
 	label := unittest.AssertExistsAndLoadBean(t, &issues_model.Label{ID: 1})
-	// make sure update wont overwrite it
+	// make sure update won't overwrite it
 	update := &issues_model.Label{
 		ID:           label.ID,
 		Color:        "#ffff00",

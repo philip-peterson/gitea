@@ -8,17 +8,19 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/unit"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	runnerv1 "gitea.dev/actions-proto-go/runner/v1"
+	auth_model "gitea.dev/models/auth"
+	"gitea.dev/models/db"
+	"gitea.dev/models/unit"
+	"gitea.dev/modules/actions/jobparser"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 
-	runnerv1 "code.gitea.io/actions-proto-go/runner/v1"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"xorm.io/builder"
@@ -75,7 +77,7 @@ func init() {
 }
 
 func (task *ActionTask) Duration() time.Duration {
-	return calculateDuration(task.Started, task.Stopped, task.Status)
+	return calculateDuration(task.Started, task.Stopped, task.Status, task.Updated)
 }
 
 func (task *ActionTask) IsStopped() bool {
@@ -112,7 +114,7 @@ func (task *ActionTask) GetRepoLink() string {
 
 func (task *ActionTask) LoadJob(ctx context.Context) error {
 	if task.Job == nil {
-		job, err := GetRunJobByID(ctx, task.JobID)
+		job, err := GetRunJobByRepoAndID(ctx, task.RepoID, task.JobID)
 		if err != nil {
 			return err
 		}
@@ -123,9 +125,6 @@ func (task *ActionTask) LoadJob(ctx context.Context) error {
 
 // LoadAttributes load Job Steps if not loaded
 func (task *ActionTask) LoadAttributes(ctx context.Context) error {
-	if task == nil {
-		return nil
-	}
 	if err := task.LoadJob(ctx); err != nil {
 		return err
 	}
@@ -145,9 +144,8 @@ func (task *ActionTask) LoadAttributes(ctx context.Context) error {
 	return nil
 }
 
-func (task *ActionTask) GenerateToken() (err error) {
-	task.Token, task.TokenSalt, task.TokenHash, task.TokenLastEight, err = generateSaltedToken()
-	return err
+func (task *ActionTask) GenerateAndFillToken() {
+	task.Token, task.TokenSalt, task.TokenHash, task.TokenLastEight = generateSaltedToken()
 }
 
 func GetTaskByID(ctx context.Context, id int64) (*ActionTask, error) {
@@ -195,7 +193,8 @@ func GetRunningTaskByToken(ctx context.Context, token string) (*ActionTask, erro
 	}
 
 	var tasks []*ActionTask
-	err := db.GetEngine(ctx).Where("token_last_eight = ? AND status = ?", lastEight, StatusRunning).Find(&tasks)
+	// Cancelling tasks are still authenticating — post-run cleanup steps need API access (artifact uploads, cache saves, etc.) before the runner finalizes the task.
+	err := db.GetEngine(ctx).Where("token_last_eight = ? AND status IN (?, ?)", lastEight, StatusRunning, StatusCancelling).Find(&tasks)
 	if err != nil {
 		return nil, err
 	} else if len(tasks) == 0 {
@@ -212,6 +211,20 @@ func GetRunningTaskByToken(ctx context.Context, token string) (*ActionTask, erro
 		}
 	}
 	return nil, errNotExist
+}
+
+func makeTaskStepDisplayName(step *jobparser.Step, limit int) (name string) {
+	if step.Name != "" {
+		name = step.Name // the step has an explicit name
+	} else {
+		// for unnamed step, its "String()" method tries to get a display name by its "name", "uses",
+		// "run" or "id" (last fallback), we add the "Run " prefix for unnamed steps for better display
+		// for multi-line "run" scripts, only use the first line to match GitHub's behavior
+		// https://github.com/actions/runner/blob/66800900843747f37591b077091dd2c8cf2c1796/src/Runner.Worker/Handlers/ScriptHandler.cs#L45-L58
+		runStr, _, _ := strings.Cut(strings.TrimSpace(step.Run), "\n")
+		name = "Run " + util.IfZero(strings.TrimSpace(runStr), step.String())
+	}
+	return util.EllipsisDisplayString(name, limit) // database column has a length limit
 }
 
 func CreateTaskForRunner(ctx context.Context, runner *ActionRunner) (*ActionTask, bool, error) {
@@ -236,7 +249,7 @@ func CreateTaskForRunner(ctx context.Context, runner *ActionRunner) (*ActionTask
 	}
 
 	var jobs []*ActionRunJob
-	if err := e.Where("task_id=? AND status=?", 0, StatusWaiting).And(jobCond).Asc("updated", "id").Find(&jobs); err != nil {
+	if err := e.Where("task_id=? AND status=? AND is_reusable_caller=?", 0, StatusWaiting, false).And(jobCond).Asc("updated", "id").Find(&jobs); err != nil {
 		return nil, false, err
 	}
 
@@ -257,7 +270,6 @@ func CreateTaskForRunner(ctx context.Context, runner *ActionRunner) (*ActionTask
 	}
 
 	now := timeutil.TimeStampNow()
-	job.Attempt++
 	job.Started = now
 	job.Status = StatusRunning
 
@@ -272,9 +284,7 @@ func CreateTaskForRunner(ctx context.Context, runner *ActionRunner) (*ActionTask
 		CommitSHA:         job.CommitSHA,
 		IsForkPullRequest: job.IsForkPullRequest,
 	}
-	if err := task.GenerateToken(); err != nil {
-		return nil, false, err
-	}
+	task.GenerateAndFillToken()
 
 	workflowJob, err := job.ParseJob()
 	if err != nil {
@@ -293,9 +303,8 @@ func CreateTaskForRunner(ctx context.Context, runner *ActionRunner) (*ActionTask
 	if len(workflowJob.Steps) > 0 {
 		steps := make([]*ActionTaskStep, len(workflowJob.Steps))
 		for i, v := range workflowJob.Steps {
-			name := util.EllipsisDisplayString(v.String(), 255)
 			steps[i] = &ActionTaskStep{
-				Name:   name,
+				Name:   makeTaskStepDisplayName(v, 255),
 				TaskID: task.ID,
 				Index:  int64(i),
 				RepoID: task.RepoID,
@@ -366,16 +375,22 @@ func UpdateTaskByState(ctx context.Context, runnerID int64, state *runnerv1.Task
 
 		// state.Result is not unspecified means the task is finished
 		if state.Result != runnerv1.Result_RESULT_UNSPECIFIED {
-			task.Status = Status(state.Result)
+			if task.Status == StatusCancelling {
+				// The runner may report SUCCESS/FAILURE for the cleanup phase; preserve user intent.
+				task.Status = StatusCancelled
+			} else {
+				task.Status = StatusFromResult(state.Result)
+			}
 			task.Stopped = timeutil.TimeStamp(state.StoppedAt.AsTime().Unix())
 			if err := UpdateTask(ctx, task, "status", "stopped"); err != nil {
 				return nil, err
 			}
 			if _, err := UpdateRunJob(ctx, &ActionRunJob{
 				ID:      task.JobID,
+				RepoID:  task.RepoID,
 				Status:  task.Status,
 				Stopped: task.Stopped,
-			}, nil); err != nil {
+			}, nil, "status", "stopped"); err != nil {
 				return nil, err
 			}
 		} else {
@@ -400,7 +415,7 @@ func UpdateTaskByState(ctx context.Context, runnerID int64, state *runnerv1.Task
 				step.Stopped = convertTimestamp(v.StoppedAt)
 			}
 			if result != runnerv1.Result_RESULT_UNSPECIFIED {
-				step.Status = Status(result)
+				step.Status = StatusFromResult(result)
 			} else if step.Started != 0 {
 				step.Status = StatusRunning
 			}
@@ -414,7 +429,7 @@ func UpdateTaskByState(ctx context.Context, runnerID int64, state *runnerv1.Task
 }
 
 func StopTask(ctx context.Context, taskID int64, status Status) error {
-	if !status.IsDone() {
+	if !status.IsDone() && status != StatusCancelling {
 		return fmt.Errorf("cannot stop task with status %v", status)
 	}
 	e := db.GetEngine(ctx)
@@ -430,10 +445,37 @@ func StopTask(ctx context.Context, taskID int64, status Status) error {
 	}
 
 	now := timeutil.TimeStampNow()
+	if status == StatusCancelling {
+		runner, err := GetRunnerByID(ctx, task.RunnerID)
+		if err != nil {
+			if !errors.Is(err, util.ErrNotExist) {
+				return err
+			}
+			status = StatusCancelled
+		} else if !runner.HasCancellingSupport {
+			status = StatusCancelled
+		}
+	}
+
+	if status == StatusCancelling {
+		task.Status = StatusCancelling
+
+		if _, err := UpdateRunJob(ctx, &ActionRunJob{
+			ID:     task.JobID,
+			RepoID: task.RepoID,
+			Status: StatusCancelling,
+		}, nil, "status"); err != nil {
+			return err
+		}
+
+		return UpdateTask(ctx, task, "status")
+	}
+
 	task.Status = status
 	task.Stopped = now
 	if _, err := UpdateRunJob(ctx, &ActionRunJob{
 		ID:      task.JobID,
+		RepoID:  task.RepoID,
 		Status:  task.Status,
 		Stopped: task.Stopped,
 	}, nil); err != nil {

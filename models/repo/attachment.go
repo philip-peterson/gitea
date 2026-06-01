@@ -11,12 +11,12 @@ import (
 	"os"
 	"path"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/storage"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/storage"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 )
 
 // Attachment represent a attachment of issue/comment/release.
@@ -164,6 +164,11 @@ func GetAttachmentByReleaseIDFileName(ctx context.Context, releaseID int64, file
 		return nil, err
 	}
 	return attach, nil
+}
+
+func GetUnlinkedAttachmentsByUserID(ctx context.Context, userID int64) ([]*Attachment, error) {
+	attachments := make([]*Attachment, 0, 10)
+	return attachments, db.GetEngine(ctx).Where("uploader_id = ? AND issue_id = 0 AND release_id = 0 AND comment_id = 0", userID).Find(&attachments)
 }
 
 // DeleteAttachment deletes the given attachment and optionally the associated file.

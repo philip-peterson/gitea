@@ -4,12 +4,15 @@
 package setting
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/modules/log"
+	"gitea.dev/modules/log"
 )
+
+const defaultMaxRerunAttempts = 50
 
 // Actions settings
 var (
@@ -25,10 +28,14 @@ var (
 		EndlessTaskTimeout    time.Duration     `ini:"ENDLESS_TASK_TIMEOUT"`
 		AbandonedJobTimeout   time.Duration     `ini:"ABANDONED_JOB_TIMEOUT"`
 		SkipWorkflowStrings   []string          `ini:"SKIP_WORKFLOW_STRINGS"`
+		WorkflowDirs          []string          `ini:"WORKFLOW_DIRS"`
+		MaxRerunAttempts      int64             `ini:"MAX_RERUN_ATTEMPTS"`
 	}{
 		Enabled:             true,
 		DefaultActionsURL:   defaultActionsURLGitHub,
 		SkipWorkflowStrings: []string{"[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]"},
+		WorkflowDirs:        []string{".gitea/workflows", ".github/workflows"},
+		MaxRerunAttempts:    defaultMaxRerunAttempts,
 	}
 )
 
@@ -115,9 +122,28 @@ func loadActionsFrom(rootCfg ConfigProvider) error {
 	Actions.EndlessTaskTimeout = sec.Key("ENDLESS_TASK_TIMEOUT").MustDuration(3 * time.Hour)
 	Actions.AbandonedJobTimeout = sec.Key("ABANDONED_JOB_TIMEOUT").MustDuration(24 * time.Hour)
 
+	if Actions.MaxRerunAttempts <= 0 {
+		Actions.MaxRerunAttempts = defaultMaxRerunAttempts
+	}
+
 	if !Actions.LogCompression.IsValid() {
 		return fmt.Errorf("invalid [actions] LOG_COMPRESSION: %q", Actions.LogCompression)
 	}
+
+	workflowDirs := make([]string, 0, len(Actions.WorkflowDirs))
+	for _, dir := range Actions.WorkflowDirs {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		dir = strings.ReplaceAll(dir, `\`, `/`)
+		dir = strings.TrimRight(dir, "/")
+		workflowDirs = append(workflowDirs, dir)
+	}
+	if len(workflowDirs) == 0 {
+		return errors.New("[actions] WORKFLOW_DIRS must contain at least one entry")
+	}
+	Actions.WorkflowDirs = workflowDirs
 
 	return nil
 }

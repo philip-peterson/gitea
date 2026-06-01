@@ -9,18 +9,18 @@ import (
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/log"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	notify_service "code.gitea.io/gitea/services/notify"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/log"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	notify_service "gitea.dev/services/notify"
 
 	"xorm.io/builder"
 )
@@ -123,8 +123,8 @@ func ForkRepository(ctx context.Context, doer, owner *user_model.User, opts Fork
 	// WARNING: Don't override all later err with local variables
 	defer func() {
 		if err != nil {
-			// we can not use the ctx because it maybe canceled or timeout
-			cleanupRepository(repo.ID)
+			// we can not use `ctx` because it may be canceled or timed out
+			cleanupRepository(repo)
 		}
 	}()
 
@@ -177,10 +177,10 @@ func ForkRepository(ctx context.Context, doer, owner *user_model.User, opts Fork
 	}
 	defer gitRepo.Close()
 
-	if _, err = repo_module.SyncRepoBranchesWithRepo(ctx, repo, gitRepo, doer.ID); err != nil {
+	if _, _, err = repo_module.SyncRepoBranchesWithRepo(ctx, repo, gitRepo, doer.ID); err != nil {
 		return nil, fmt.Errorf("SyncRepoBranchesWithRepo: %w", err)
 	}
-	if err = repo_module.SyncReleasesWithTags(ctx, repo, gitRepo); err != nil {
+	if _, err = repo_module.SyncReleasesWithTags(ctx, repo, gitRepo); err != nil {
 		return nil, fmt.Errorf("Sync releases from git tags failed: %v", err)
 	}
 

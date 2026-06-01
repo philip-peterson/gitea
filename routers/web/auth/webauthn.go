@@ -8,13 +8,13 @@ import (
 	"errors"
 	"net/http"
 
-	"code.gitea.io/gitea/models/auth"
-	user_model "code.gitea.io/gitea/models/user"
-	wa "code.gitea.io/gitea/modules/auth/webauthn"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/services/context"
+	"gitea.dev/models/auth"
+	user_model "gitea.dev/models/user"
+	wa "gitea.dev/modules/auth/webauthn"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/services/context"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -26,7 +26,7 @@ var tplWebAuthn templates.TplName = "user/auth/webauthn"
 func WebAuthn(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("twofa")
 
-	if CheckAutoLogin(ctx) {
+	if performAutoLogin(ctx) {
 		return
 	}
 
@@ -156,12 +156,8 @@ func WebAuthnPasskeyLogin(ctx *context.Context) {
 	}
 
 	remember := false // TODO: implement remember me
-	redirect := handleSignInFull(ctx, user, remember, false)
-	if redirect == "" {
-		redirect = setting.AppSubURL + "/"
-	}
-
-	ctx.JSONRedirect(redirect)
+	handleSignInFull(ctx, user, remember)
+	ctx.JSONRedirect(consumeAuthRedirectLink(ctx))
 }
 
 // WebAuthnLoginAssertion submits a WebAuthn challenge to the browser
@@ -274,11 +270,7 @@ func WebAuthnLoginAssertionPost(ctx *context.Context) {
 	}
 
 	remember := ctx.Session.Get("twofaRemember").(bool)
-	redirect := handleSignInFull(ctx, user, remember, false)
-	if redirect == "" {
-		redirect = setting.AppSubURL + "/"
-	}
+	handleSignInFull(ctx, user, remember)
 	_ = ctx.Session.Delete("twofaUid")
-
-	ctx.JSONRedirect(redirect)
+	ctx.JSONRedirect(consumeAuthRedirectLink(ctx))
 }

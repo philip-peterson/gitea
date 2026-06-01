@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/services/auth/source/ldap"
+	"gitea.dev/models/auth"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/auth/source/ldap"
 
 	"github.com/urfave/cli/v3"
 )
@@ -93,6 +93,10 @@ func commonLdapCLIFlags() []cli.Flag {
 		&cli.StringFlag{
 			Name:  "public-ssh-key-attribute",
 			Usage: "The attribute of the user’s LDAP record containing the user’s public ssh key.",
+		},
+		&cli.BoolFlag{
+			Name:  "ssh-keys-are-verified",
+			Usage: "Set to true to automatically flag SSH keys in LDAP as verified.",
 		},
 		&cli.BoolFlag{
 			Name:  "skip-local-2fa",
@@ -293,6 +297,9 @@ func parseLdapConfig(c *cli.Command, config *ldap.Source) error {
 	}
 	if c.IsSet("public-ssh-key-attribute") {
 		config.AttributeSSHPublicKey = c.String("public-ssh-key-attribute")
+	}
+	if c.IsSet("ssh-keys-are-verified") {
+		config.SSHKeysAreVerified = c.Bool("ssh-keys-are-verified")
 	}
 	if c.IsSet("avatar-attribute") {
 		config.AttributeAvatar = c.String("avatar-attribute")

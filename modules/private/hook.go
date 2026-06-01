@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"net/url"
 
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/httplib"
-	"code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/httplib"
+	"gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
 )
 
 // Git environment variables
@@ -37,7 +37,7 @@ type HookOptions struct {
 	PushTrigger                     repository.PushTrigger
 	DeployKeyID                     int64 // if the pusher is a DeployKey, then UserID is the repo's org user.
 	IsWiki                          bool
-	ActionPerm                      int
+	ActionsTaskID                   int64 // if the pusher is an Actions user, the task ID
 }
 
 // SSHLogOption ssh log options

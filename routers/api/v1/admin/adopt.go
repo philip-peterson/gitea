@@ -6,12 +6,12 @@ package admin
 import (
 	"net/http"
 
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/routers/api/v1/utils"
-	"code.gitea.io/gitea/services/context"
-	repo_service "code.gitea.io/gitea/services/repository"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/routers/api/v1/utils"
+	"gitea.dev/services/context"
+	repo_service "gitea.dev/services/repository"
 )
 
 // ListUnadoptedRepositories lists the unadopted repositories that match the provided names
@@ -50,7 +50,7 @@ func ListUnadoptedRepositories(ctx *context.APIContext) {
 		return
 	}
 
-	ctx.SetTotalCountHeader(int64(count))
+	ctx.SetTotalCountHeader(count)
 
 	ctx.JSON(http.StatusOK, repoNames)
 }
@@ -99,12 +99,12 @@ func AdoptRepository(ctx *context.APIContext) {
 		ctx.APIErrorInternal(err)
 		return
 	}
-	isDir, err := util.IsDir(repo_model.RepoPath(ctxUser.Name, repoName))
+	exist, err := gitrepo.IsRepositoryExist(ctx, repo_model.StorageRepo(repo_model.RelativePath(ctxUser.Name, repoName)))
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
 	}
-	if has || !isDir {
+	if has || !exist {
 		ctx.APIErrorNotFound()
 		return
 	}
@@ -161,12 +161,12 @@ func DeleteUnadoptedRepository(ctx *context.APIContext) {
 		ctx.APIErrorInternal(err)
 		return
 	}
-	isDir, err := util.IsDir(repo_model.RepoPath(ctxUser.Name, repoName))
+	exist, err := gitrepo.IsRepositoryExist(ctx, repo_model.StorageRepo(repo_model.RelativePath(ctxUser.Name, repoName)))
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
 	}
-	if has || !isDir {
+	if has || !exist {
 		ctx.APIErrorNotFound()
 		return
 	}

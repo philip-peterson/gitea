@@ -10,21 +10,21 @@ import (
 	"net/http"
 	"time"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/organization"
-	repo_model "code.gitea.io/gitea/models/repo"
-	unit_model "code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/lfs"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/migration"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	"gitea.dev/models/organization"
+	repo_model "gitea.dev/models/repo"
+	unit_model "gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/lfs"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/migration"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 )
 
 func cloneWiki(ctx context.Context, repo *repo_model.Repository, opts migration.MigrateOptions, migrateTimeout time.Duration) (string, error) {
@@ -145,7 +145,7 @@ func MigrateRepositoryGitData(ctx context.Context, u *user_model.User,
 			}
 		}
 
-		if _, err := repo_module.SyncRepoBranchesWithRepo(ctx, repo, gitRepo, u.ID); err != nil {
+		if _, _, err := repo_module.SyncRepoBranchesWithRepo(ctx, repo, gitRepo, u.ID); err != nil {
 			return repo, fmt.Errorf("SyncRepoBranchesWithRepo: %v", err)
 		}
 
@@ -153,7 +153,7 @@ func MigrateRepositoryGitData(ctx context.Context, u *user_model.User,
 		// otherwise, the releases sync will be done out of this function
 		if !opts.Releases {
 			repo.IsMirror = opts.Mirror
-			if err = repo_module.SyncReleasesWithTags(ctx, repo, gitRepo); err != nil {
+			if _, err = repo_module.SyncReleasesWithTags(ctx, repo, gitRepo); err != nil {
 				log.Error("Failed to synchronize tags to releases for repository: %v", err)
 			}
 		}
@@ -225,7 +225,7 @@ func MigrateRepositoryGitData(ctx context.Context, u *user_model.User,
 
 			// this is necessary for sync local tags from remote
 			configName := fmt.Sprintf("remote.%s.fetch", mirrorModel.GetRemoteName())
-			if stdout, err := gitrepo.RunCmdString(ctx, repo,
+			if stdout, _, err := gitrepo.RunCmdString(ctx, repo,
 				gitcmd.NewCommand("config").
 					AddOptionValues("--add", configName, `+refs/tags/*:refs/tags/*`)); err != nil {
 				log.Error("MigrateRepositoryGitData(git config --add <remote> +refs/tags/*:refs/tags/*) in %v: Stdout: %s\nError: %v", repo, stdout, err)

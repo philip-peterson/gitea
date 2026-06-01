@@ -11,22 +11,21 @@ import (
 	"path"
 	"strings"
 
-	git_model "code.gitea.io/gitea/models/git"
-	"code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/unit"
-	"code.gitea.io/gitea/modules/charset"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/httplib"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/context/upload"
-	"code.gitea.io/gitea/services/forms"
-	files_service "code.gitea.io/gitea/services/repository/files"
+	git_model "gitea.dev/models/git"
+	"gitea.dev/models/issues"
+	"gitea.dev/models/unit"
+	"gitea.dev/modules/charset"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/httplib"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
+	"gitea.dev/modules/web"
+	"gitea.dev/services/context"
+	"gitea.dev/services/context/upload"
+	"gitea.dev/services/forms"
+	files_service "gitea.dev/services/repository/files"
 )
 
 const (
@@ -78,8 +77,6 @@ func prepareEditorPageFormOptions(ctx *context.Context, editorAction string) *co
 	ctx.Data["CommitFormOptions"] = commitFormOptions
 
 	// for online editor
-	ctx.Data["PreviewableExtensions"] = strings.Join(markup.PreviewableExtensions(), ",")
-	ctx.Data["LineWrapExtensions"] = strings.Join(setting.Repository.Editor.LineWrapExtensions, ",")
 	ctx.Data["IsEditingFileOnly"] = ctx.FormString("return_uri") != ""
 	ctx.Data["ReturnURI"] = ctx.FormString("return_uri")
 
@@ -221,7 +218,8 @@ func redirectForCommitChoice[T any](ctx *context.Context, parsed *preparedEditor
 	}
 
 	// redirect to the newly updated file
-	redirectTo := util.URLJoin(ctx.Repo.RepoLink, "src/branch", util.PathEscapeSegments(parsed.NewBranchName), util.PathEscapeSegments(treePath))
+	redirectTo := ctx.Repo.RepoLink + "/src/branch/" + util.PathEscapeSegments(parsed.NewBranchName) + "/" + util.PathEscapeSegments(treePath)
+	redirectTo = strings.TrimSuffix(redirectTo, "/")
 	ctx.JSONRedirect(redirectTo)
 }
 
@@ -321,7 +319,12 @@ func EditFile(ctx *context.Context) {
 		}
 	}
 
-	ctx.Data["EditorconfigJson"] = getContextRepoEditorConfig(ctx, ctx.Repo.TreePath)
+	editorConfig := getCodeEditorConfigByEditorconfig(ctx, ctx.Repo.TreePath)
+	editorConfig.Autofocus = !isNewFile
+	if isNewFile {
+		editorConfig.Filename = ""
+	}
+	ctx.Data["CodeEditorConfig"] = editorConfig
 	ctx.HTML(http.StatusOK, tplEditFile)
 }
 

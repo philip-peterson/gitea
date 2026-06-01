@@ -8,15 +8,14 @@ import (
 	"net/http"
 	"strings"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
+	auth_model "gitea.dev/models/auth"
+	"gitea.dev/models/db"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
+	"gitea.dev/modules/web"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
 )
 
 const (
@@ -27,7 +26,6 @@ const (
 func Applications(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("settings.applications")
 	ctx.Data["PageIsSettingsApplications"] = true
-	ctx.Data["UserDisabledFeatures"] = user_model.DisabledFeaturesWithLoginType(ctx.Doer)
 
 	loadApplicationsData(ctx)
 
@@ -39,7 +37,6 @@ func ApplicationsPost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.NewAccessTokenForm)
 	ctx.Data["Title"] = ctx.Tr("settings_title")
 	ctx.Data["PageIsSettingsApplications"] = true
-	ctx.Data["UserDisabledFeatures"] = user_model.DisabledFeaturesWithLoginType(ctx.Doer)
 
 	_ = ctx.Req.ParseForm()
 	var scopeNames []string

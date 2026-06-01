@@ -1,11 +1,12 @@
 import {queryElems} from '../utils/dom.ts';
+import {errorMessage} from '../modules/errors.ts';
 import {POST} from '../modules/fetch.ts';
 import {showErrorToast} from '../modules/toast.ts';
 import {sleep} from '../utils.ts';
 import RepoActivityTopAuthors from '../components/RepoActivityTopAuthors.vue';
 import {createApp} from 'vue';
-import {toOriginUrl} from '../utils/url.ts';
 import {createTippy} from '../modules/tippy.ts';
+import {localUserSettings} from '../modules/user-settings.ts';
 
 async function onDownloadArchive(e: Event) {
   e.preventDefault();
@@ -25,7 +26,7 @@ async function onDownloadArchive(e: Event) {
     window.location.href = el.href; // the archive is ready, start real downloading
   } catch (e) {
     console.error(e);
-    showErrorToast(`Failed to download the archive: ${e}`, {duration: 2500});
+    showErrorToast(`Failed to download the archive: ${errorMessage(e)}`, {duration: 2500});
   } finally {
     targetLoading.classList.remove('is-loading', 'loading-icon-2px');
   }
@@ -57,7 +58,7 @@ function initCloneSchemeUrlSelection(parent: Element) {
   const tabSsh = parent.querySelector('.repo-clone-ssh');
   const tabTea = parent.querySelector('.repo-clone-tea');
   const updateClonePanelUi = function() {
-    let scheme = localStorage.getItem('repo-clone-protocol')!;
+    let scheme = localUserSettings.getString('repo-clone-protocol');
     if (!['https', 'ssh', 'tea'].includes(scheme)) {
       scheme = 'https';
     }
@@ -77,7 +78,8 @@ function initCloneSchemeUrlSelection(parent: Element) {
     const isTea = scheme === 'tea';
 
     if (tabHttps) {
-      tabHttps.textContent = window.origin.split(':')[0].toUpperCase(); // show "HTTP" or "HTTPS"
+      const link = tabHttps.getAttribute('data-link')!;
+      tabHttps.textContent = link.split(':')[0].toUpperCase(); // show "HTTP" or "HTTPS"
       tabHttps.classList.toggle('active', isHttps);
     }
     if (tabSsh) {
@@ -97,7 +99,7 @@ function initCloneSchemeUrlSelection(parent: Element) {
     }
 
     if (!tab) return;
-    const link = toOriginUrl(tab.getAttribute('data-link')!);
+    const link = tab.getAttribute('data-link')!;
 
     for (const el of document.querySelectorAll('.js-clone-url')) {
       if (el.nodeName === 'INPUT') {
@@ -114,15 +116,15 @@ function initCloneSchemeUrlSelection(parent: Element) {
   updateClonePanelUi();
   // tabSsh or tabHttps might not both exist, eg: guest view, or one is disabled by the server
   tabHttps?.addEventListener('click', () => {
-    localStorage.setItem('repo-clone-protocol', 'https');
+    localUserSettings.setString('repo-clone-protocol', 'https');
     updateClonePanelUi();
   });
   tabSsh?.addEventListener('click', () => {
-    localStorage.setItem('repo-clone-protocol', 'ssh');
+    localUserSettings.setString('repo-clone-protocol', 'ssh');
     updateClonePanelUi();
   });
   tabTea?.addEventListener('click', () => {
-    localStorage.setItem('repo-clone-protocol', 'tea');
+    localUserSettings.setString('repo-clone-protocol', 'tea');
     updateClonePanelUi();
   });
   elCloneUrlInput.addEventListener('focus', () => {

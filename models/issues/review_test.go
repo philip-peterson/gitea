@@ -6,10 +6,10 @@ package issues_test
 import (
 	"testing"
 
-	issues_model "code.gitea.io/gitea/models/issues"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
+	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -303,6 +303,46 @@ func TestDeleteDismissedReview(t *testing.T) {
 	unittest.AssertNotExistsBean(t, &issues_model.Comment{ID: comment.ID})
 }
 
+func TestSubmitReviewClearsStaleReviewRequest(t *testing.T) {
+	assert.NoError(t, unittest.PrepareTestDatabase())
+
+	issue := unittest.AssertExistsAndLoadBean(t, &issues_model.Issue{ID: 3})
+	assert.NoError(t, issue.LoadRepo(t.Context()))
+	assert.NoError(t, issue.Repo.LoadOwner(t.Context()))
+	reviewer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1})
+	doer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2})
+
+	// the reviewer is requested to review the pull request
+	requestReview, err := issues_model.CreateReview(t.Context(), issues_model.CreateReviewOptions{
+		Type:     issues_model.ReviewTypeRequest,
+		Issue:    issue,
+		Reviewer: reviewer,
+	})
+	assert.NoError(t, err)
+
+	// the reviewer starts a pending review (e.g. by adding code comments)
+	pendingReview, err := issues_model.CreateReview(t.Context(), issues_model.CreateReviewOptions{
+		Type:     issues_model.ReviewTypePending,
+		Issue:    issue,
+		Reviewer: reviewer,
+	})
+	assert.NoError(t, err)
+
+	// submitting the pending review must clear the leftover review request,
+	// otherwise the reviewer can no longer be re-requested afterwards
+	review, _, err := issues_model.SubmitReview(t.Context(), reviewer, issue, issues_model.ReviewTypeComment, "looks good", "", false, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, pendingReview.ID, review.ID)
+	assert.Equal(t, issues_model.ReviewTypeComment, review.Type)
+
+	unittest.AssertNotExistsBean(t, &issues_model.Review{ID: requestReview.ID})
+
+	// the reviewer can be re-requested afterwards (no-op before the fix)
+	comment, err := issues_model.AddReviewRequest(t.Context(), issue, reviewer, doer, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, comment)
+}
+
 func TestAddReviewRequest(t *testing.T) {
 	assert.NoError(t, unittest.PrepareTestDatabase())
 
@@ -321,14 +361,28 @@ func TestAddReviewRequest(t *testing.T) {
 	pull.HasMerged = false
 	assert.NoError(t, pull.UpdateCols(t.Context(), "has_merged"))
 	issue.IsClosed = true
-	_, err = issues_model.AddReviewRequest(t.Context(), issue, reviewer, &user_model.User{})
+	_, err = issues_model.AddReviewRequest(t.Context(), issue, reviewer, &user_model.User{}, false)
 	assert.Error(t, err)
 	assert.True(t, issues_model.IsErrReviewRequestOnClosedPR(err))
 
 	pull.HasMerged = true
 	assert.NoError(t, pull.UpdateCols(t.Context(), "has_merged"))
 	issue.IsClosed = false
-	_, err = issues_model.AddReviewRequest(t.Context(), issue, reviewer, &user_model.User{})
+	_, err = issues_model.AddReviewRequest(t.Context(), issue, reviewer, &user_model.User{}, false)
 	assert.Error(t, err)
 	assert.True(t, issues_model.IsErrReviewRequestOnClosedPR(err))
+
+	// Test CODEOWNERS review request stores metadata correctly
+	pull2 := unittest.AssertExistsAndLoadBean(t, &issues_model.PullRequest{ID: 2})
+	assert.NoError(t, pull2.LoadIssue(t.Context()))
+	issue2 := pull2.Issue
+	assert.NoError(t, issue2.LoadRepo(t.Context()))
+	reviewer2 := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 7})
+	doer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 2})
+
+	comment, err := issues_model.AddReviewRequest(t.Context(), issue2, reviewer2, doer, true)
+	assert.NoError(t, err)
+	assert.NotNil(t, comment)
+	assert.NotNil(t, comment.CommentMetaData)
+	assert.Equal(t, issues_model.SpecialDoerNameCodeOwners, comment.CommentMetaData.SpecialDoerName)
 }

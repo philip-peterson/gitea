@@ -8,17 +8,18 @@ import (
 	"slices"
 	"strings"
 
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/glob"
-	"code.gitea.io/gitea/modules/log"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	webhook_module "code.gitea.io/gitea/modules/webhook"
+	"gitea.dev/modules/actions/jobparser"
+	"gitea.dev/modules/actions/workflowpattern"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/glob"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	webhook_module "gitea.dev/modules/webhook"
 
-	"github.com/nektos/act/pkg/jobparser"
-	"github.com/nektos/act/pkg/model"
-	"github.com/nektos/act/pkg/workflowpattern"
-	"gopkg.in/yaml.v3"
+	"gitea.com/gitea/runner/act/model"
+	"go.yaml.in/yaml/v4"
 )
 
 type DetectedWorkflow struct {
@@ -41,21 +42,29 @@ func IsWorkflow(path string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(path, ".gitea/workflows") || strings.HasPrefix(path, ".github/workflows")
+	for _, workflowDir := range setting.Actions.WorkflowDirs {
+		if strings.HasPrefix(path, workflowDir+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func ListWorkflows(commit *git.Commit) (string, git.Entries, error) {
-	rpath := ".gitea/workflows"
-	tree, err := commit.SubTree(rpath)
-	if _, ok := err.(git.ErrNotExist); ok {
-		rpath = ".github/workflows"
-		tree, err = commit.SubTree(rpath)
+	var tree *git.Tree
+	var err error
+	var workflowDir string
+	for _, workflowDir = range setting.Actions.WorkflowDirs {
+		tree, err = commit.SubTree(workflowDir)
+		if err == nil {
+			break
+		}
+		if !git.IsErrNotExist(err) {
+			return "", nil, err
+		}
 	}
-	if _, ok := err.(git.ErrNotExist); ok {
+	if tree == nil {
 		return "", nil, nil
-	}
-	if err != nil {
-		return "", nil, err
 	}
 
 	entries, err := tree.ListEntriesRecursiveFast()
@@ -69,7 +78,7 @@ func ListWorkflows(commit *git.Commit) (string, git.Entries, error) {
 			ret = append(ret, entry)
 		}
 	}
-	return rpath, ret, nil
+	return workflowDir, ret, nil
 }
 
 func GetContentFromEntry(entry *git.TreeEntry) ([]byte, error) {
@@ -94,8 +103,18 @@ func GetEventsFromContent(content []byte) ([]*jobparser.Event, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := ValidateWorkflowContent(content); err != nil {
+		return nil, err
+	}
 
 	return events, nil
+}
+
+// ValidateWorkflowContent catches structural errors (e.g. blank lines in run: | blocks)
+// that model.ReadWorkflow alone does not detect.
+func ValidateWorkflowContent(content []byte) error {
+	_, err := jobparser.Parse(content)
+	return err
 }
 
 func DetectWorkflows(
@@ -278,7 +297,7 @@ func matchPushEvent(commit *git.Commit, pushPayload *api.PushPayload, evt *jobpa
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Skip(patterns, []string{refName.BranchName()}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Skip(patterns, []string{refName.BranchName()}) {
 				matchTimes++
 			}
 		case "branches-ignore":
@@ -290,7 +309,7 @@ func matchPushEvent(commit *git.Commit, pushPayload *api.PushPayload, evt *jobpa
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Filter(patterns, []string{refName.BranchName()}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Filter(patterns, []string{refName.BranchName()}) {
 				matchTimes++
 			}
 		case "tags":
@@ -302,7 +321,7 @@ func matchPushEvent(commit *git.Commit, pushPayload *api.PushPayload, evt *jobpa
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Skip(patterns, []string{refName.TagName()}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Skip(patterns, []string{refName.TagName()}) {
 				matchTimes++
 			}
 		case "tags-ignore":
@@ -314,7 +333,7 @@ func matchPushEvent(commit *git.Commit, pushPayload *api.PushPayload, evt *jobpa
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Filter(patterns, []string{refName.TagName()}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Filter(patterns, []string{refName.TagName()}) {
 				matchTimes++
 			}
 		case "paths":
@@ -330,7 +349,7 @@ func matchPushEvent(commit *git.Commit, pushPayload *api.PushPayload, evt *jobpa
 				if err != nil {
 					break
 				}
-				if !workflowpattern.Skip(patterns, filesChanged, &workflowpattern.EmptyTraceWriter{}) {
+				if !workflowpattern.Skip(patterns, filesChanged) {
 					matchTimes++
 				}
 			}
@@ -347,7 +366,7 @@ func matchPushEvent(commit *git.Commit, pushPayload *api.PushPayload, evt *jobpa
 				if err != nil {
 					break
 				}
-				if !workflowpattern.Filter(patterns, filesChanged, &workflowpattern.EmptyTraceWriter{}) {
+				if !workflowpattern.Filter(patterns, filesChanged) {
 					matchTimes++
 				}
 			}
@@ -473,7 +492,7 @@ func matchPullRequestEvent(gitRepo *git.Repository, commit *git.Commit, prPayloa
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Skip(patterns, []string{refName.ShortName()}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Skip(patterns, []string{refName.ShortName()}) {
 				matchTimes++
 			}
 		case "branches-ignore":
@@ -482,7 +501,7 @@ func matchPullRequestEvent(gitRepo *git.Repository, commit *git.Commit, prPayloa
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Filter(patterns, []string{refName.ShortName()}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Filter(patterns, []string{refName.ShortName()}) {
 				matchTimes++
 			}
 		case "paths":
@@ -494,7 +513,7 @@ func matchPullRequestEvent(gitRepo *git.Repository, commit *git.Commit, prPayloa
 				if err != nil {
 					break
 				}
-				if !workflowpattern.Skip(patterns, filesChanged, &workflowpattern.EmptyTraceWriter{}) {
+				if !workflowpattern.Skip(patterns, filesChanged) {
 					matchTimes++
 				}
 			}
@@ -507,7 +526,7 @@ func matchPullRequestEvent(gitRepo *git.Repository, commit *git.Commit, prPayloa
 				if err != nil {
 					break
 				}
-				if !workflowpattern.Filter(patterns, filesChanged, &workflowpattern.EmptyTraceWriter{}) {
+				if !workflowpattern.Filter(patterns, filesChanged) {
 					matchTimes++
 				}
 			}
@@ -728,7 +747,7 @@ func matchWorkflowRunEvent(payload *api.WorkflowRunPayload, evt *jobparser.Event
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Skip(patterns, []string{workflow.Name}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Skip(patterns, []string{workflow.Name}) {
 				matchTimes++
 			}
 		case "branches":
@@ -736,7 +755,7 @@ func matchWorkflowRunEvent(payload *api.WorkflowRunPayload, evt *jobparser.Event
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Skip(patterns, []string{payload.WorkflowRun.HeadBranch}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Skip(patterns, []string{payload.WorkflowRun.HeadBranch}) {
 				matchTimes++
 			}
 		case "branches-ignore":
@@ -744,7 +763,7 @@ func matchWorkflowRunEvent(payload *api.WorkflowRunPayload, evt *jobparser.Event
 			if err != nil {
 				break
 			}
-			if !workflowpattern.Filter(patterns, []string{payload.WorkflowRun.HeadBranch}, &workflowpattern.EmptyTraceWriter{}) {
+			if !workflowpattern.Filter(patterns, []string{payload.WorkflowRun.HeadBranch}) {
 				matchTimes++
 			}
 		default:

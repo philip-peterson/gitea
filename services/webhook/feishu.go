@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	webhook_model "code.gitea.io/gitea/models/webhook"
-	"code.gitea.io/gitea/modules/git"
-	api "code.gitea.io/gitea/modules/structs"
-	webhook_module "code.gitea.io/gitea/modules/webhook"
+	webhook_model "gitea.dev/models/webhook"
+	"gitea.dev/modules/git"
+	api "gitea.dev/modules/structs"
+	webhook_module "gitea.dev/modules/webhook"
 )
 
 type (
@@ -77,7 +77,7 @@ func (fc feishuConvertor) Push(p *api.PushPayload) (FeishuPayload, error) {
 	)
 
 	var text strings.Builder
-	text.WriteString(fmt.Sprintf("[%s:%s] %s\r\n", p.Repo.FullName, branchName, commitDesc))
+	fmt.Fprintf(&text, "[%s:%s] %s\r\n", p.Repo.FullName, branchName, commitDesc)
 	// for each commit, generate attachment text
 	for i, commit := range p.Commits {
 		var authorName string

@@ -8,30 +8,65 @@ import (
 	"strings"
 	"testing"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	issues_model "code.gitea.io/gitea/models/issues"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/test"
-	"code.gitea.io/gitea/modules/translation"
-	"code.gitea.io/gitea/tests"
+	asymkey_model "gitea.dev/models/asymkey"
+	auth_model "gitea.dev/models/auth"
+	"gitea.dev/models/db"
+	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/test"
+	"gitea.dev/modules/translation"
+	"gitea.dev/tests"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestViewUser(t *testing.T) {
+func TestUser(t *testing.T) {
 	defer tests.PrepareTestEnv(t)()
-
-	req := NewRequest(t, "GET", "/user2")
-	MakeRequest(t, req, http.StatusOK)
+	t.Run("ViewUser", testViewUser)
+	t.Run("RenameInvalidUsername", testRenameInvalidUsername)
+	t.Run("RenameReservedUsername", testRenameReservedUsername)
+	t.Run("ViewLimitedAndPrivateUserAndRename", testViewLimitedAndPrivateUserAndRename)
+	t.Run("ExportUserGPGKeys", testExportUserGPGKeys)
+	t.Run("GetUserRss", testGetUserRss)
+	t.Run("ListStopWatches", testUserListStopWatches)
+	t.Run("LocationMapLink", testUserLocationMapLink)
+	t.Run("RenameUsername", testRenameUsername)
 }
 
-func TestRenameUsername(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
+func testViewUser(t *testing.T) {
+	req := NewRequest(t, "GET", "/user2")
+	MakeRequest(t, req, http.StatusOK)
 
+	req = NewRequest(t, "GET", "/user2.keys")
+	resp := MakeRequest(t, req, http.StatusOK)
+	assert.Equal(t, `# Gitea isn't a key server. The keys are exported as the user uploaded and might not have been fully verified.
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDWVj0fQ5N8wNc0LVNA41wDLYJ89ZIbejrPfg/avyj3u/ZohAKsQclxG4Ju0VirduBFF9EOiuxoiFBRr3xRpqzpsZtnMPkWVWb+akZwBFAx8p+jKdy4QXR/SZqbVobrGwip2UjSrri1CtBxpJikojRIZfCnDaMOyd9Jp6KkujvniFzUWdLmCPxUE9zhTaPu0JsEP7MW0m6yx7ZUhHyfss+NtqmFTaDO+QlMR7L2QkDliN2Jl3Xa3PhuWnKJfWhdAq1Cw4oraKUOmIgXLkuiuxVQ6mD3AiFupkmfqdHq6h+uHHmyQqv3gU+/sD8GbGAhf6ftqhTsXjnv1Aj4R8NoDf9BS6KRkzkeun5UisSzgtfQzjOMEiJtmrep2ZQrMGahrXa+q4VKr0aKJfm+KlLfwm/JztfsBcqQWNcTURiCFqz+fgZw0Ey/de0eyMzldYTdXXNRYCKjs9bvBK+6SSXRM7AhftfQ0ZuoW5+gtinPrnmoOaSCEJbAiEiTO/BzOHgowiM=
+`, resp.Body.String())
+
+	_ = db.TruncateBeans(t.Context(), &asymkey_model.PublicKey{})
+	_ = db.Insert(t.Context(), &asymkey_model.PublicKey{
+		OwnerID: 2,
+		Name:    "key-1",
+		Content: "ssh-rsa AAAA",
+		Type:    asymkey_model.KeyTypeUser,
+	}, &asymkey_model.PublicKey{
+		OwnerID: 2,
+		Name:    "key-2",
+		Content: "principal",
+		Type:    asymkey_model.KeyTypePrincipal,
+	})
+	req = NewRequest(t, "GET", "/user2.keys")
+	resp = MakeRequest(t, req, http.StatusOK)
+	assert.Equal(t, `# Gitea isn't a key server. The keys are exported as the user uploaded and might not have been fully verified.
+ssh-rsa AAAA
+`, resp.Body.String())
+}
+
+func testRenameUsername(t *testing.T) {
 	session := loginUser(t, "user2")
 	req := NewRequestWithValues(t, "POST", "/user/settings", map[string]string{
 		"name":     "newUsername",
@@ -44,9 +79,7 @@ func TestRenameUsername(t *testing.T) {
 	unittest.AssertNotExistsBean(t, &user_model.User{Name: "user2"})
 }
 
-func TestViewLimitedAndPrivateUserAndRename(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
-
+func testViewLimitedAndPrivateUserAndRename(t *testing.T) {
 	// user 22 is a limited visibility org
 	org22 := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 22})
 	req := NewRequest(t, "GET", "/"+org22.Name)
@@ -113,9 +146,7 @@ func TestViewLimitedAndPrivateUserAndRename(t *testing.T) {
 	session.MakeRequest(t, req, http.StatusTemporaryRedirect) // login user2 can visit private visibility user via old name
 }
 
-func TestRenameInvalidUsername(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
-
+func testRenameInvalidUsername(t *testing.T) {
 	invalidUsernames := []string{
 		"%2f*",
 		"%2f.",
@@ -160,20 +191,22 @@ func TestRenameInvalidUsername(t *testing.T) {
 	}
 }
 
-func TestRenameReservedUsername(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
-
-	reservedUsernames := []string{
-		// ".", "..", ".well-known", // The names are not only reserved but also invalid
+func testRenameReservedUsername(t *testing.T) {
+	// ".", "..", ".well-known" are also reserved but invalid as form input.
+	reservedNames := []string{
 		"api",
+		"openapi3.v1.json",
+		"swagger.v1.json",
+	}
+	patternNotAllowedNames := []string{
 		"name.keys",
 	}
 
 	session := loginUser(t, "user2")
 	locale := translation.NewLocale("en-US")
-	for _, reservedUsername := range reservedUsernames {
+	check := func(name, msgKey string) {
 		req := NewRequestWithValues(t, "POST", "/user/settings", map[string]string{
-			"name":     reservedUsername,
+			"name":     name,
 			"email":    "user2@example.com",
 			"language": "en-US",
 		})
@@ -183,19 +216,29 @@ func TestRenameReservedUsername(t *testing.T) {
 		resp = session.MakeRequest(t, req, http.StatusOK)
 		htmlDoc := NewHTMLParser(t, resp.Body)
 		actualMsg := strings.TrimSpace(htmlDoc.doc.Find(".ui.negative.message").Text())
-		expectedMsg := locale.TrString("user.form.name_reserved", reservedUsername)
-		if strings.Contains(reservedUsername, ".") {
-			expectedMsg = locale.TrString("user.form.name_pattern_not_allowed", reservedUsername)
-		}
-		assert.Equal(t, expectedMsg, actualMsg)
-		unittest.AssertNotExistsBean(t, &user_model.User{Name: reservedUsername})
+		assert.Equal(t, locale.TrString(msgKey, name), actualMsg)
+		unittest.AssertNotExistsBean(t, &user_model.User{Name: name})
+	}
+	for _, name := range reservedNames {
+		check(name, "user.form.name_reserved")
+	}
+	for _, name := range patternNotAllowedNames {
+		check(name, "user.form.name_pattern_not_allowed")
 	}
 }
 
-func TestExportUserGPGKeys(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
+func testExportUserGPGKeys(t *testing.T) {
+	testExportUserGPGKeys := func(t *testing.T, user, expected string) {
+		session := loginUser(t, user)
+		t.Logf("Testing username %s export gpg keys", user)
+		req := NewRequest(t, "GET", "/"+user+".gpg")
+		resp := session.MakeRequest(t, req, http.StatusOK)
+		assert.Equal(t, expected, resp.Body.String())
+	}
+
 	// Export empty key list
 	testExportUserGPGKeys(t, "user1", `-----BEGIN PGP PUBLIC KEY BLOCK-----
+Comment: Gitea isn't a key server. The keys are exported as the user uploaded and might not have been fully verified.
 Note: This user hasn't uploaded any GPG keys.
 
 
@@ -237,6 +280,7 @@ GrE0MHOxUbc9tbtyk0F1SuzREUBH
 -----END PGP PUBLIC KEY BLOCK-----`)
 	// Export new key
 	testExportUserGPGKeys(t, "user1", `-----BEGIN PGP PUBLIC KEY BLOCK-----
+Comment: Gitea isn't a key server. The keys are exported as the user uploaded and might not have been fully verified.
 
 xsBNBFyy/VUBCADJ7zbM20Z1RWmFoVgp5WkQfI2rU1Vj9cQHes9i42wVLLtcbPeo
 QzubgzvMPITDy7nfWxgSf83E23DoHQ1ACFbQh/6eFSRrjsusp3YQ/08NSfPPbcu8
@@ -268,18 +312,7 @@ GrE0MHOxUbc9tbtyk0F1SuzREUBH
 -----END PGP PUBLIC KEY BLOCK-----`)
 }
 
-func testExportUserGPGKeys(t *testing.T, user, expected string) {
-	session := loginUser(t, user)
-	t.Logf("Testing username %s export gpg keys", user)
-	req := NewRequest(t, "GET", "/"+user+".gpg")
-	resp := session.MakeRequest(t, req, http.StatusOK)
-	// t.Log(resp.Body.String())
-	assert.Equal(t, expected, resp.Body.String())
-}
-
-func TestGetUserRss(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
-
+func testGetUserRss(t *testing.T) {
 	user34 := "the_34-user.with.all.allowedChars"
 	req := NewRequestf(t, "GET", "/%s.rss", user34)
 	resp := MakeRequest(t, req, http.StatusOK)
@@ -299,17 +332,14 @@ func TestGetUserRss(t *testing.T) {
 	session.MakeRequest(t, req, http.StatusNotFound)
 }
 
-func TestListStopWatches(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
-
+func testUserListStopWatches(t *testing.T) {
 	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: 1})
 	owner := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: repo.OwnerID})
 
 	session := loginUser(t, owner.Name)
 	req := NewRequest(t, "GET", "/user/stopwatches")
 	resp := session.MakeRequest(t, req, http.StatusOK)
-	var apiWatches []*api.StopWatch
-	DecodeJSON(t, resp, &apiWatches)
+	apiWatches := DecodeJSON(t, resp, []*api.StopWatch{})
 	stopwatch := unittest.AssertExistsAndLoadBean(t, &issues_model.Stopwatch{UserID: owner.ID})
 	issue := unittest.AssertExistsAndLoadBean(t, &issues_model.Issue{ID: stopwatch.IssueID})
 	if assert.Len(t, apiWatches, 1) {
@@ -322,8 +352,7 @@ func TestListStopWatches(t *testing.T) {
 	}
 }
 
-func TestUserLocationMapLink(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
+func testUserLocationMapLink(t *testing.T) {
 	defer test.MockVariableValue(&setting.Service.UserLocationMapURL, "https://example/foo/")()
 
 	session := loginUser(t, "user2")

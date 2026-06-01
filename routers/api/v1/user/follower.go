@@ -8,11 +8,11 @@ import (
 	"errors"
 	"net/http"
 
-	user_model "code.gitea.io/gitea/models/user"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/routers/api/v1/utils"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/convert"
+	user_model "gitea.dev/models/user"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/routers/api/v1/utils"
+	"gitea.dev/services/context"
+	"gitea.dev/services/convert"
 )
 
 func responseAPIUsers(ctx *context.APIContext, users []*user_model.User) {
@@ -24,12 +24,14 @@ func responseAPIUsers(ctx *context.APIContext, users []*user_model.User) {
 }
 
 func listUserFollowers(ctx *context.APIContext, u *user_model.User) {
-	users, count, err := user_model.GetUserFollowers(ctx, u, ctx.Doer, utils.GetListOptions(ctx))
+	listOptions := utils.GetListOptions(ctx)
+	users, count, err := user_model.GetUserFollowers(ctx, u, ctx.Doer, listOptions)
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
 	}
 
+	ctx.SetLinkHeader(count, listOptions.PageSize)
 	ctx.SetTotalCountHeader(count)
 	responseAPIUsers(ctx, users)
 }
@@ -88,12 +90,14 @@ func ListFollowers(ctx *context.APIContext) {
 }
 
 func listUserFollowing(ctx *context.APIContext, u *user_model.User) {
-	users, count, err := user_model.GetUserFollowing(ctx, u, ctx.Doer, utils.GetListOptions(ctx))
+	listOptions := utils.GetListOptions(ctx)
+	users, count, err := user_model.GetUserFollowing(ctx, u, ctx.Doer, listOptions)
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
 	}
 
+	ctx.SetLinkHeader(count, listOptions.PageSize)
 	ctx.SetTotalCountHeader(count)
 	responseAPIUsers(ctx, users)
 }

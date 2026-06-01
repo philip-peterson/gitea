@@ -6,34 +6,33 @@ package migrations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/models"
-	"code.gitea.io/gitea/models/db"
-	issues_model "code.gitea.io/gitea/models/issues"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/label"
-	"code.gitea.io/gitea/modules/log"
-	base "code.gitea.io/gitea/modules/migration"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/storage"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/uri"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/services/pull"
-	repo_service "code.gitea.io/gitea/services/repository"
+	"gitea.dev/models"
+	"gitea.dev/models/db"
+	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/label"
+	"gitea.dev/modules/log"
+	base "gitea.dev/modules/migration"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/storage"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/uri"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/pull"
+	repo_service "gitea.dev/services/repository"
 
 	"github.com/google/uuid"
 )
@@ -103,6 +102,7 @@ func (g *GiteaLocalUploader) CreateRepo(ctx context.Context, repo *base.Reposito
 		r, err = repo_service.CreateRepositoryDirectly(ctx, g.doer, owner, repo_service.CreateRepoOptions{
 			Name:           g.repoName,
 			Description:    repo.Description,
+			Website:        repo.Website,
 			OriginalURL:    repo.OriginalURL,
 			GitServiceType: opts.GitServiceType,
 			IsPrivate:      opts.Private || setting.Repository.ForcePrivate,
@@ -117,6 +117,7 @@ func (g *GiteaLocalUploader) CreateRepo(ctx context.Context, repo *base.Reposito
 	}
 	r.DefaultBranch = repo.DefaultBranch
 	r.Description = repo.Description
+	r.Website = repo.Website
 
 	r, err = repo_service.MigrateRepositoryGitData(ctx, owner, r, base.MigrateOptions{
 		RepoName:       g.repoName,
@@ -320,6 +321,7 @@ func (g *GiteaLocalUploader) CreateReleases(ctx context.Context, releases ...*ba
 			}
 			attach := repo_model.Attachment{
 				UUID:          uuid.New().String(),
+				RepoID:        g.repo.ID,
 				Name:          asset.Name,
 				DownloadCount: int64(*asset.DownloadCount),
 				Size:          int64(*asset.Size),
@@ -365,11 +367,12 @@ func (g *GiteaLocalUploader) CreateReleases(ctx context.Context, releases ...*ba
 
 // SyncTags syncs releases with tags in the database
 func (g *GiteaLocalUploader) SyncTags(ctx context.Context) error {
-	return repo_module.SyncReleasesWithTags(ctx, g.repo, g.gitRepo)
+	_, err := repo_module.SyncReleasesWithTags(ctx, g.repo, g.gitRepo)
+	return err
 }
 
 func (g *GiteaLocalUploader) SyncBranches(ctx context.Context) error {
-	_, err := repo_module.SyncRepoBranchesWithRepo(ctx, g.repo, g.gitRepo, g.doer.ID)
+	_, _, err := repo_module.SyncRepoBranchesWithRepo(ctx, g.repo, g.gitRepo, g.doer.ID)
 	return err
 }
 
@@ -589,12 +592,7 @@ func (g *GiteaLocalUploader) updateGitForPullRequest(ctx context.Context, pr *ba
 		}
 		defer ret.Close()
 
-		pullDir := filepath.Join(g.repo.RepoPath(), "pulls")
-		if err = os.MkdirAll(pullDir, os.ModePerm); err != nil {
-			return err
-		}
-
-		f, err := os.Create(filepath.Join(pullDir, fmt.Sprintf("%d.patch", pr.Number)))
+		f, err := gitrepo.CreateRepoFile(ctx, g.repo, fmt.Sprintf("pulls/%d.patch", pr.Number))
 		if err != nil {
 			return err
 		}
@@ -668,7 +666,7 @@ func (g *GiteaLocalUploader) updateGitForPullRequest(ctx context.Context, pr *ba
 				fetchArg = git.BranchPrefix + fetchArg
 			}
 
-			_, err = gitrepo.RunCmdString(ctx, g.repo, gitcmd.NewCommand("fetch", "--no-tags").AddDashesAndList(remote, fetchArg))
+			_, _, err = gitrepo.RunCmdString(ctx, g.repo, gitcmd.NewCommand("fetch", "--no-tags").AddDashesAndList(remote, fetchArg))
 			if err != nil {
 				log.Error("Fetch branch from %s failed: %v", pr.Head.CloneURL, err)
 				return head, nil
@@ -703,7 +701,7 @@ func (g *GiteaLocalUploader) updateGitForPullRequest(ctx context.Context, pr *ba
 		// The SHA is empty
 		log.Warn("Empty reference, no pull head for PR #%d in %s/%s", pr.Number, g.repoOwner, g.repoName)
 	} else {
-		_, err = gitrepo.RunCmdString(ctx, g.repo, gitcmd.NewCommand("rev-list", "--quiet", "-1").AddDynamicArguments(pr.Head.SHA))
+		_, _, err = gitrepo.RunCmdString(ctx, g.repo, gitcmd.NewCommand("rev-list", "--quiet", "-1").AddDynamicArguments(pr.Head.SHA))
 		if err != nil {
 			// Git update-ref remove bad references with a relative path
 			log.Warn("Deprecated local head %s for PR #%d in %s/%s, removing  %s", pr.Head.SHA, pr.Number, g.repoOwner, g.repoName, pr.GetGitHeadRefName())
@@ -739,7 +737,7 @@ func (g *GiteaLocalUploader) newPullRequest(ctx context.Context, pr *base.PullRe
 		if pr.Base.Ref != "" && pr.Head.SHA != "" {
 			// A PR against a tag base does not make sense - therefore pr.Base.Ref must be a branch
 			// TODO: should we be checking for the refs/heads/ prefix on the pr.Base.Ref? (i.e. are these actually branches or refs)
-			pr.Base.SHA, _, err = g.gitRepo.GetMergeBase("", git.BranchPrefix+pr.Base.Ref, pr.Head.SHA)
+			pr.Base.SHA, err = gitrepo.MergeBase(ctx, g.repo, git.BranchPrefix+pr.Base.Ref, pr.Head.SHA)
 			if err != nil {
 				log.Error("Cannot determine the merge base for PR #%d in %s/%s. Error: %v", pr.Number, g.repoOwner, g.repoName, err)
 			}
@@ -901,21 +899,10 @@ func (g *GiteaLocalUploader) CreateReviews(ctx context.Context, reviews ...*base
 			// SECURITY: The TreePath must be cleaned! use relative path
 			comment.TreePath = util.PathJoinRel(comment.TreePath)
 
-			var patch string
-			reader, writer := io.Pipe()
-			defer func() {
-				_ = reader.Close()
-				_ = writer.Close()
-			}()
-			go func(comment *base.ReviewComment) {
-				if err := git.GetRepoRawDiffForFile(g.gitRepo, pr.MergeBase, headCommitID, git.RawDiffNormal, comment.TreePath, writer); err != nil {
-					// We should ignore the error since the commit maybe removed when force push to the pull request
-					log.Warn("GetRepoRawDiffForFile failed when migrating [%s, %s, %s, %s]: %v", g.gitRepo.Path, pr.MergeBase, headCommitID, comment.TreePath, err)
-				}
-				_ = writer.Close()
-			}(comment)
-
-			patch, _ = git.CutDiffAroundLine(reader, int64((&issues_model.Comment{Line: int64(line + comment.Position - 1)}).UnsignedLine()), line < 0, setting.UI.CodeCommentLines)
+			patch, _ := git.GetFileDiffCutAroundLine(
+				g.gitRepo, pr.MergeBase, headCommitID, comment.TreePath,
+				int64((&issues_model.Comment{Line: int64(line + comment.Position - 1)}).UnsignedLine()), line < 0, setting.UI.CodeCommentLines,
+			)
 
 			if comment.CreatedAt.IsZero() {
 				comment.CreatedAt = review.CreatedAt
@@ -1003,12 +990,15 @@ func (g *GiteaLocalUploader) remapUser(ctx context.Context, source user_model.Ex
 func (g *GiteaLocalUploader) remapLocalUser(ctx context.Context, source user_model.ExternalUserMigrated) (int64, error) {
 	userid, ok := g.userMap[source.GetExternalID()]
 	if !ok {
-		name, err := user_model.GetUserNameByID(ctx, source.GetExternalID())
-		if err != nil {
+		user, err := user_model.GetUserByID(ctx, source.GetExternalID())
+		if errors.Is(err, util.ErrNotExist) {
+			g.userMap[source.GetExternalID()] = userid
+			return 0, nil
+		} else if err != nil {
 			return 0, err
 		}
-		// let's not reuse an ID when the user was deleted or has a different user name
-		if name != source.GetExternalName() {
+		// let's not reuse an ID when the user was deleted or has a different username
+		if !util.AsciiEqualFold(user.Name, source.GetExternalName()) {
 			userid = 0
 		} else {
 			userid = source.GetExternalID()

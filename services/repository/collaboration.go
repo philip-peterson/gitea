@@ -8,12 +8,12 @@ import (
 	"context"
 	"fmt"
 
-	"code.gitea.io/gitea/models/db"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
+	"gitea.dev/models/db"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
 
 	"xorm.io/builder"
 )
@@ -117,6 +117,11 @@ func ReconsiderWatches(ctx context.Context, repo *repo_model.Repository, user *u
 		return err
 	}
 	if err := repo_model.WatchRepo(ctx, user, repo, false); err != nil {
+		return err
+	}
+
+	// Remove all stopwatches a user has running in the repository
+	if err := issues_model.RemoveStopwatchesByRepoID(ctx, user.ID, repo.ID); err != nil {
 		return err
 	}
 

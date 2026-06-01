@@ -11,25 +11,25 @@ import (
 	"strconv"
 	"strings"
 
-	"code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
-	org_model "code.gitea.io/gitea/models/organization"
-	packages_model "code.gitea.io/gitea/models/packages"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/auth/password"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/optional"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/routers/web/explore"
-	user_setting "code.gitea.io/gitea/routers/web/user/setting"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
-	"code.gitea.io/gitea/services/mailer"
-	user_service "code.gitea.io/gitea/services/user"
+	"gitea.dev/models/auth"
+	"gitea.dev/models/db"
+	org_model "gitea.dev/models/organization"
+	packages_model "gitea.dev/models/packages"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/auth/password"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/optional"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/web"
+	"gitea.dev/routers/web/explore"
+	user_setting "gitea.dev/routers/web/user/setting"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
+	"gitea.dev/services/mailer"
+	user_service "gitea.dev/services/user"
 )
 
 const (
@@ -151,12 +151,12 @@ func NewUserPost(ctx *context.Context) {
 	if u.LoginType == auth.NoType || u.LoginType == auth.Plain {
 		if len(form.Password) < setting.MinPasswordLength {
 			ctx.Data["Err_Password"] = true
-			ctx.RenderWithErr(ctx.Tr("auth.password_too_short", setting.MinPasswordLength), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("auth.password_too_short", setting.MinPasswordLength), tplUserNew, &form)
 			return
 		}
 		if !password.IsComplexEnough(form.Password) {
 			ctx.Data["Err_Password"] = true
-			ctx.RenderWithErr(password.BuildComplexityError(ctx.Locale), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(password.BuildComplexityError(ctx.Locale), tplUserNew, &form)
 			return
 		}
 		if err := password.IsPwned(ctx, form.Password); err != nil {
@@ -166,7 +166,7 @@ func NewUserPost(ctx *context.Context) {
 				log.Error(err.Error())
 				errMsg = ctx.Tr("auth.password_pwned_err")
 			}
-			ctx.RenderWithErr(errMsg, tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(errMsg, tplUserNew, &form)
 			return
 		}
 		u.MustChangePassword = form.MustChangePassword
@@ -176,22 +176,22 @@ func NewUserPost(ctx *context.Context) {
 		switch {
 		case user_model.IsErrUserAlreadyExist(err):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErr(ctx.Tr("form.username_been_taken"), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.username_been_taken"), tplUserNew, &form)
 		case user_model.IsErrEmailAlreadyUsed(err):
 			ctx.Data["Err_Email"] = true
-			ctx.RenderWithErr(ctx.Tr("form.email_been_used"), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.email_been_used"), tplUserNew, &form)
 		case user_model.IsErrEmailInvalid(err), user_model.IsErrEmailCharIsNotSupported(err):
 			ctx.Data["Err_Email"] = true
-			ctx.RenderWithErr(ctx.Tr("form.email_invalid"), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.email_invalid"), tplUserNew, &form)
 		case db.IsErrNameReserved(err):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErr(ctx.Tr("user.form.name_reserved", err.(db.ErrNameReserved).Name), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_reserved", err.(db.ErrNameReserved).Name), tplUserNew, &form)
 		case db.IsErrNamePatternNotAllowed(err):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErr(ctx.Tr("user.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tplUserNew, &form)
 		case db.IsErrNameCharsNotAllowed(err):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErr(ctx.Tr("user.form.name_chars_not_allowed", err.(db.ErrNameCharsNotAllowed).Name), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_chars_not_allowed", err.(db.ErrNameCharsNotAllowed).Name), tplUserNew, &form)
 		default:
 			ctx.ServerError("CreateUser", err)
 		}
@@ -349,19 +349,19 @@ func EditUserPost(ctx *context.Context) {
 			switch {
 			case user_model.IsErrUserIsNotLocal(err):
 				ctx.Data["Err_UserName"] = true
-				ctx.RenderWithErr(ctx.Tr("form.username_change_not_local_user"), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("form.username_change_not_local_user"), tplUserEdit, &form)
 			case user_model.IsErrUserAlreadyExist(err):
 				ctx.Data["Err_UserName"] = true
-				ctx.RenderWithErr(ctx.Tr("form.username_been_taken"), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("form.username_been_taken"), tplUserEdit, &form)
 			case db.IsErrNameReserved(err):
 				ctx.Data["Err_UserName"] = true
-				ctx.RenderWithErr(ctx.Tr("user.form.name_reserved", form.UserName), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_reserved", form.UserName), tplUserEdit, &form)
 			case db.IsErrNamePatternNotAllowed(err):
 				ctx.Data["Err_UserName"] = true
-				ctx.RenderWithErr(ctx.Tr("user.form.name_pattern_not_allowed", form.UserName), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_pattern_not_allowed", form.UserName), tplUserEdit, &form)
 			case db.IsErrNameCharsNotAllowed(err):
 				ctx.Data["Err_UserName"] = true
-				ctx.RenderWithErr(ctx.Tr("user.form.name_chars_not_allowed", form.UserName), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_chars_not_allowed", form.UserName), tplUserEdit, &form)
 			default:
 				ctx.ServerError("RenameUser", err)
 			}
@@ -392,16 +392,16 @@ func EditUserPost(ctx *context.Context) {
 		switch {
 		case errors.Is(err, password.ErrMinLength):
 			ctx.Data["Err_Password"] = true
-			ctx.RenderWithErr(ctx.Tr("auth.password_too_short", setting.MinPasswordLength), tplUserEdit, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("auth.password_too_short", setting.MinPasswordLength), tplUserEdit, &form)
 		case errors.Is(err, password.ErrComplexity):
 			ctx.Data["Err_Password"] = true
-			ctx.RenderWithErr(password.BuildComplexityError(ctx.Locale), tplUserEdit, &form)
+			ctx.RenderWithErrDeprecated(password.BuildComplexityError(ctx.Locale), tplUserEdit, &form)
 		case errors.Is(err, password.ErrIsPwned):
 			ctx.Data["Err_Password"] = true
-			ctx.RenderWithErr(ctx.Tr("auth.password_pwned", "https://haveibeenpwned.com/Passwords"), tplUserEdit, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("auth.password_pwned", "https://haveibeenpwned.com/Passwords"), tplUserEdit, &form)
 		case password.IsErrIsPwnedRequest(err):
 			ctx.Data["Err_Password"] = true
-			ctx.RenderWithErr(ctx.Tr("auth.password_pwned_err"), tplUserEdit, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("auth.password_pwned_err"), tplUserEdit, &form)
 		default:
 			ctx.ServerError("UpdateUser", err)
 		}
@@ -413,10 +413,10 @@ func EditUserPost(ctx *context.Context) {
 			switch {
 			case user_model.IsErrEmailCharIsNotSupported(err), user_model.IsErrEmailInvalid(err):
 				ctx.Data["Err_Email"] = true
-				ctx.RenderWithErr(ctx.Tr("form.email_invalid"), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("form.email_invalid"), tplUserEdit, &form)
 			case user_model.IsErrEmailAlreadyUsed(err):
 				ctx.Data["Err_Email"] = true
-				ctx.RenderWithErr(ctx.Tr("form.email_been_used"), tplUserEdit, &form)
+				ctx.RenderWithErrDeprecated(ctx.Tr("form.email_been_used"), tplUserEdit, &form)
 			default:
 				ctx.ServerError("AddOrSetPrimaryEmailAddress", err)
 			}
@@ -444,7 +444,7 @@ func EditUserPost(ctx *context.Context) {
 
 	if err := user_service.UpdateUser(ctx, u, opts); err != nil {
 		if user_model.IsErrDeleteLastAdminUser(err) {
-			ctx.RenderWithErr(ctx.Tr("auth.last_admin"), tplUserEdit, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("auth.last_admin"), tplUserEdit, &form)
 		} else {
 			ctx.ServerError("UpdateUser", err)
 		}

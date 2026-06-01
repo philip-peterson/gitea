@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"net/url"
 
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/routers/api/v1/utils"
-	"code.gitea.io/gitea/services/context"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	"gitea.dev/routers/api/v1/utils"
+	"gitea.dev/services/context"
 )
 
 // GetGitAllRefs get ref or an list all the refs of a repository
@@ -34,7 +34,7 @@ func GetGitAllRefs(ctx *context.APIContext) {
 	//   required: true
 	// responses:
 	//   "200":
-	// #   "$ref": "#/responses/Reference" TODO: swagger doesnt support different output formats by ref
+	// #   "$ref": "#/responses/Reference" TODO: swagger doesn't support different output formats by ref
 	//     "$ref": "#/responses/ReferenceList"
 	//   "404":
 	//     "$ref": "#/responses/notFound"
@@ -67,7 +67,7 @@ func GetGitRefs(ctx *context.APIContext) {
 	//   required: true
 	// responses:
 	//   "200":
-	// #   "$ref": "#/responses/Reference" TODO: swagger doesnt support different output formats by ref
+	// #   "$ref": "#/responses/Reference" TODO: swagger doesn't support different output formats by ref
 	//     "$ref": "#/responses/ReferenceList"
 	//   "404":
 	//     "$ref": "#/responses/notFound"

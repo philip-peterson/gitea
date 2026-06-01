@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	"gitea.dev/modules/util"
 )
 
 // UserOpenID is the list of all OpenID identities of a user.
@@ -102,7 +102,13 @@ func DeleteUserOpenID(ctx context.Context, openid *UserOpenID) (err error) {
 }
 
 // ToggleUserOpenIDVisibility toggles visibility of an openid address of given user.
-func ToggleUserOpenIDVisibility(ctx context.Context, id int64) (err error) {
-	_, err = db.GetEngine(ctx).Exec("update `user_open_id` set `show` = not `show` where `id` = ?", id)
-	return err
+func ToggleUserOpenIDVisibility(ctx context.Context, id int64, user *User) error {
+	affected, err := db.GetEngine(ctx).Exec("update `user_open_id` set `show` = not `show` where `id` = ? AND uid = ?", id, user.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := affected.RowsAffected(); n != 1 {
+		return util.NewNotExistErrorf("OpenID is unknown")
+	}
+	return nil
 }

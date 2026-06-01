@@ -8,22 +8,23 @@ import (
 	"net/http"
 	"strings"
 
-	activities_model "code.gitea.io/gitea/models/activities"
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	issues_model "code.gitea.io/gitea/models/issues"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/optional"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/services/context"
-	issue_service "code.gitea.io/gitea/services/issue"
-	pull_service "code.gitea.io/gitea/services/pull"
+	activities_model "gitea.dev/models/activities"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	"gitea.dev/modules/base"
+	"gitea.dev/modules/container"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/optional"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/context"
+	issue_service "gitea.dev/services/issue"
+	pull_service "gitea.dev/services/pull"
 )
 
 const (
@@ -60,11 +61,11 @@ func prepareUserNotificationsData(ctx *context.Context) {
 		return
 	}
 
-	pager := context.NewPagination(int(total), perPage, page, 5)
+	pager := context.NewPagination(total, perPage, page, 5)
 	if pager.Paginater.Current() < page {
 		// use the last page if the requested page is more than total pages
 		page = pager.Paginater.Current()
-		pager = context.NewPagination(int(total), perPage, page, 5)
+		pager = context.NewPagination(total, perPage, page, 5)
 	}
 
 	statuses := []activities_model.NotificationStatus{queryStatus, activities_model.NotificationStatusPinned}
@@ -128,7 +129,9 @@ func prepareUserNotificationsData(ctx *context.Context) {
 	ctx.Data["Notifications"] = notifications
 	ctx.Data["Link"] = setting.AppSubURL + "/notifications"
 	ctx.Data["SequenceNumber"] = ctx.FormString("sequence-number")
+
 	pager.AddParamFromRequest(ctx.Req)
+	pager.RemoveParam(container.SetOf("div-only", "sequence-number"))
 	ctx.Data["Page"] = pager
 }
 
@@ -244,7 +247,7 @@ func NotificationSubscriptions(ctx *context.Context) {
 		ctx.ServerError("GetIssuesAllCommitStatus", err)
 		return
 	}
-	if !ctx.Repo.CanRead(unit.TypeActions) {
+	if !ctx.Repo.Permission.CanRead(unit.TypeActions) {
 		for key := range commitStatuses {
 			git_model.CommitStatusesHideActionsURL(ctx, commitStatuses[key])
 		}
@@ -283,7 +286,7 @@ func NotificationSubscriptions(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("notification.subscriptions")
 
 	// redirect to last page if request page is more than total pages
-	pager := context.NewPagination(int(count), setting.UI.IssuePagingNum, page, 5)
+	pager := context.NewPagination(count, setting.UI.IssuePagingNum, page, 5)
 	if pager.Paginater.Current() < page {
 		ctx.Redirect(fmt.Sprintf("/notifications/subscriptions?page=%d", pager.Paginater.Current()))
 		return
@@ -367,12 +370,11 @@ func NotificationWatching(ctx *context.Context) {
 		ctx.ServerError("SearchRepository", err)
 		return
 	}
-	total := int(count)
-	ctx.Data["Total"] = total
+	ctx.Data["Total"] = count
 	ctx.Data["Repos"] = repos
 
 	// redirect to last page if request page is more than total pages
-	pager := context.NewPagination(total, setting.UI.User.RepoPagingNum, page, 5)
+	pager := context.NewPagination(count, setting.UI.User.RepoPagingNum, page, 5)
 	pager.AddParamFromRequest(ctx.Req)
 	ctx.Data["Page"] = pager
 

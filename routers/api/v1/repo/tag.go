@@ -9,16 +9,16 @@ import (
 	"net/http"
 	"strings"
 
-	git_model "code.gitea.io/gitea/models/git"
-	"code.gitea.io/gitea/models/organization"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/routers/api/v1/utils"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/convert"
-	release_service "code.gitea.io/gitea/services/release"
+	git_model "gitea.dev/models/git"
+	"gitea.dev/models/organization"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/web"
+	"gitea.dev/routers/api/v1/utils"
+	"gitea.dev/services/context"
+	"gitea.dev/services/convert"
+	release_service "gitea.dev/services/release"
 )
 
 // ListTags list all the tags of a repository
@@ -107,15 +107,18 @@ func GetAnnotatedTag(ctx *context.APIContext) {
 		return
 	}
 
-	if tag, err := ctx.Repo.GitRepo.GetAnnotatedTag(sha); err != nil {
+	tag, err := ctx.Repo.GitRepo.GetAnnotatedTag(sha)
+	if err != nil {
 		ctx.APIError(http.StatusBadRequest, err)
-	} else {
-		commit, err := ctx.Repo.GitRepo.GetTagCommit(tag.Name)
-		if err != nil {
-			ctx.APIError(http.StatusBadRequest, err)
-		}
-		ctx.JSON(http.StatusOK, convert.ToAnnotatedTag(ctx, ctx.Repo.Repository, tag, commit))
+		return
 	}
+
+	commit, err := ctx.Repo.GitRepo.GetTagCommit(tag.Name)
+	if err != nil {
+		ctx.APIError(http.StatusBadRequest, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, convert.ToAnnotatedTag(ctx, ctx.Repo.Repository, tag, commit))
 }
 
 // GetTag get the tag of a repository

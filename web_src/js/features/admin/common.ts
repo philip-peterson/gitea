@@ -1,7 +1,9 @@
 import {checkAppUrl} from '../common-page.ts';
 import {hideElem, queryElems, showElem, toggleElem} from '../../utils/dom.ts';
 import {POST} from '../../modules/fetch.ts';
-import {fomanticQuery} from '../../modules/fomantic/base.ts';
+import {showFomanticModal} from '../../modules/fomantic/modal.ts';
+import {pathEscape} from '../../utils/url.ts';
+import {registerGlobalInitFunc} from '../../modules/observer.ts';
 
 const {appSubUrl} = window.config;
 
@@ -22,6 +24,41 @@ export function initAdminCommon(): void {
   initAdminUser();
   initAdminAuthentication();
   initAdminNotice();
+  registerGlobalInitFunc('initRunnerBulkToolbar', initAdminRunnerBulk);
+}
+
+function initAdminRunnerBulk(toolbar: HTMLElement) {
+  const actionButtons = toolbar.querySelectorAll<HTMLButtonElement>('.runner-bulk-action');
+  const formRunnerIds = toolbar.querySelector<HTMLInputElement>('form input[name="ids"]')!;
+  const rowCheckboxes = document.querySelectorAll<HTMLInputElement>('.runner-bulk-select');
+  const selectAll = document.querySelector<HTMLInputElement>('.runner-bulk-select-all');
+  if (!selectAll) return;
+
+  const refresh = () => {
+    const checked = Array.from(rowCheckboxes).filter((c) => c.checked);
+    toggleElem(toolbar, checked.length > 0);
+    for (const btn of actionButtons) {
+      btn.querySelector<HTMLElement>('.runner-bulk-count')!.textContent = `(${checked.length})`;
+    }
+    selectAll.checked = checked.length > 0 && checked.length === rowCheckboxes.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+  };
+
+  selectAll.addEventListener('change', () => {
+    for (const cb of rowCheckboxes) cb.checked = selectAll.checked;
+    refresh();
+  });
+  for (const cb of rowCheckboxes) cb.addEventListener('change', refresh);
+  refresh();
+
+  const collectSelectedIds = () => {
+    const ids = [];
+    for (const cb of rowCheckboxes) {
+      if (cb.checked) ids.push(cb.getAttribute('data-runner-id')!);
+    }
+    return ids.join(',');
+  };
+  formRunnerIds.value = collectSelectedIds();
 }
 
 function initAdminUser() {
@@ -77,7 +114,7 @@ function initAdminAuthentication() {
   }
 
   function onOAuth2Change(applyDefaultValues: boolean) {
-    hideElem('.open_id_connect_auto_discovery_url, .oauth2_use_custom_url');
+    hideElem('.open_id_connect_auto_discovery_url, .open_id_connect_external_id_claim, .oauth2_use_custom_url');
     for (const input of document.querySelectorAll<HTMLInputElement>('.open_id_connect_auto_discovery_url input[required]')) {
       input.removeAttribute('required');
     }
@@ -85,8 +122,10 @@ function initAdminAuthentication() {
     const provider = document.querySelector<HTMLInputElement>('#oauth2_provider')!.value;
     switch (provider) {
       case 'openidConnect':
+      case 'aws-cognito':
         document.querySelector<HTMLInputElement>('.open_id_connect_auto_discovery_url input')!.setAttribute('required', 'required');
         showElem('.open_id_connect_auto_discovery_url');
+        showElem('.open_id_connect_external_id_claim');
         break;
       default: {
         const elProviderCustomUrlSettings = document.querySelector<HTMLInputElement>(`#${provider}_customURLSettings`);
@@ -122,7 +161,7 @@ function initAdminAuthentication() {
           document.querySelector<HTMLInputElement>(`#oauth2_${custom}`)!.value = document.querySelector<HTMLInputElement>(`#${provider}_${custom}`)!.value;
         }
         const customInput = document.querySelector(`#${provider}_${custom}`);
-        if (customInput && customInput.getAttribute('data-available') === 'true') {
+        if (customInput?.getAttribute('data-available') === 'true') {
           for (const input of document.querySelectorAll(`.oauth2_${custom} input`)) {
             input.setAttribute('required', 'required');
           }
@@ -230,7 +269,7 @@ function initAdminAuthentication() {
   const elAuthName = document.querySelector<HTMLInputElement>('#auth_name')!;
   const onAuthNameChange = function () {
     // appSubUrl is either empty or is a path that starts with `/` and doesn't have a trailing slash.
-    document.querySelector('#oauth2-callback-url')!.textContent = `${window.location.origin}${appSubUrl}/user/oauth2/${encodeURIComponent(elAuthName.value)}/callback`;
+    document.querySelector('#oauth2-callback-url')!.textContent = `${window.location.origin}${appSubUrl}/user/oauth2/${pathEscape(elAuthName.value)}/callback`;
   };
   elAuthName.addEventListener('input', onAuthNameChange);
   onAuthNameChange();
@@ -248,7 +287,7 @@ function initAdminNotice() {
     const elNoticeDesc = el.closest('tr')!.querySelector('.notice-description')!;
     const elModalDesc = detailModal.querySelector('.content pre')!;
     elModalDesc.textContent = elNoticeDesc.textContent;
-    fomanticQuery(detailModal).modal('show');
+    showFomanticModal(detailModal);
   }));
 
   // Select actions
@@ -284,6 +323,6 @@ function initAdminNotice() {
       }
     }
     await POST(this.getAttribute('data-link')!, {data});
-    window.location.href = this.getAttribute('data-redirect')!;
+    window.location.reload();
   });
 }

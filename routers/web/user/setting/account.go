@@ -9,24 +9,24 @@ import (
 	"net/http"
 	"time"
 
-	org_model "code.gitea.io/gitea/models/organization"
-	packages_model "code.gitea.io/gitea/models/packages"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/auth/password"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/optional"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/services/auth"
-	"code.gitea.io/gitea/services/auth/source/db"
-	"code.gitea.io/gitea/services/auth/source/smtp"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
-	"code.gitea.io/gitea/services/mailer"
-	"code.gitea.io/gitea/services/user"
+	org_model "gitea.dev/models/organization"
+	packages_model "gitea.dev/models/packages"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/auth/password"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/optional"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/web"
+	"gitea.dev/services/auth"
+	"gitea.dev/services/auth/source/db"
+	"gitea.dev/services/auth/source/smtp"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
+	"gitea.dev/services/mailer"
+	"gitea.dev/services/user"
 )
 
 const (
@@ -113,7 +113,12 @@ func EmailPost(ctx *context.Context) {
 
 	// Make email address primary.
 	if ctx.FormString("_method") == "PRIMARY" {
-		if err := user_model.MakeActiveEmailPrimary(ctx, ctx.FormInt64("id")); err != nil {
+		if err := user_model.MakeActiveEmailPrimary(ctx, ctx.Doer.ID, ctx.FormInt64("id")); err != nil {
+			if user_model.IsErrEmailAddressNotExist(err) {
+				ctx.Flash.Error(ctx.Tr("settings.email_primary_not_found"))
+				ctx.Redirect(setting.AppSubURL + "/user/settings/account")
+				return
+			}
 			ctx.ServerError("MakeEmailPrimary", err)
 			return
 		}
@@ -181,11 +186,11 @@ func EmailPost(ctx *context.Context) {
 		if user_model.IsErrEmailAlreadyUsed(err) {
 			loadAccountData(ctx)
 
-			ctx.RenderWithErr(ctx.Tr("form.email_been_used"), tplSettingsAccount, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.email_been_used"), tplSettingsAccount, &form)
 		} else if user_model.IsErrEmailCharIsNotSupported(err) || user_model.IsErrEmailInvalid(err) {
 			loadAccountData(ctx)
 
-			ctx.RenderWithErr(ctx.Tr("form.email_invalid"), tplSettingsAccount, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.email_invalid"), tplSettingsAccount, &form)
 		} else {
 			ctx.ServerError("AddEmailAddresses", err)
 		}
@@ -246,19 +251,19 @@ func DeleteAccount(ctx *context.Context) {
 		case user_model.IsErrUserNotExist(err):
 			loadAccountData(ctx)
 
-			ctx.RenderWithErr(ctx.Tr("form.user_not_exist"), tplSettingsAccount, nil)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.user_not_exist"), tplSettingsAccount, nil)
 		case errors.Is(err, smtp.ErrUnsupportedLoginType):
 			loadAccountData(ctx)
 
-			ctx.RenderWithErr(ctx.Tr("form.unsupported_login_type"), tplSettingsAccount, nil)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.unsupported_login_type"), tplSettingsAccount, nil)
 		case errors.As(err, &db.ErrUserPasswordNotSet{}):
 			loadAccountData(ctx)
 
-			ctx.RenderWithErr(ctx.Tr("form.unset_password"), tplSettingsAccount, nil)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.unset_password"), tplSettingsAccount, nil)
 		case errors.As(err, &db.ErrUserPasswordInvalid{}):
 			loadAccountData(ctx)
 
-			ctx.RenderWithErr(ctx.Tr("form.enterred_invalid_password"), tplSettingsAccount, nil)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.enterred_invalid_password"), tplSettingsAccount, nil)
 		default:
 			ctx.ServerError("UserSignIn", err)
 		}
@@ -316,7 +321,6 @@ func loadAccountData(ctx *context.Context) {
 	ctx.Data["Emails"] = emails
 	ctx.Data["ActivationsPending"] = pendingActivation
 	ctx.Data["CanAddEmails"] = !pendingActivation || !setting.Service.RegisterEmailConfirm
-	ctx.Data["UserDisabledFeatures"] = user_model.DisabledFeaturesWithLoginType(ctx.Doer)
 
 	if setting.Service.UserDeleteWithCommentsMaxTime != 0 {
 		ctx.Data["UserDeleteWithCommentsMaxTime"] = setting.Service.UserDeleteWithCommentsMaxTime.String()

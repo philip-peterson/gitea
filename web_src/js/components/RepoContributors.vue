@@ -24,6 +24,7 @@ import {
   fillEmptyStartDaysWithZeroes,
 } from '../utils/time.ts';
 import {chartJsColors} from '../utils/color.ts';
+import {errorMessage} from '../modules/errors.ts';
 import {sleep} from '../utils.ts';
 import 'chartjs-adapter-dayjs-4/dist/chartjs-adapter-dayjs-4.esm';
 import {fomanticQuery} from '../modules/fomantic/base.ts';
@@ -40,6 +41,15 @@ const customEventListener: Plugin = {
     }
   },
 };
+
+type LineOptions = ChartOptions<'line'> & {
+ plugins?: {
+   customEventListener?: {
+     chartType: string;
+     instance: unknown;
+   };
+ };
+}
 
 Chart.defaults.color = chartJsColors.text;
 Chart.defaults.borderColor = chartJsColors.border;
@@ -157,7 +167,7 @@ export default defineComponent({
           this.errorText = response.statusText;
         }
       } catch (err) {
-        this.errorText = err.message;
+        this.errorText = errorMessage(err);
       } finally {
         this.isLoading = false;
       }
@@ -251,7 +261,7 @@ export default defineComponent({
       }
     },
 
-    getOptions(type: string): ChartOptions<'line'> {
+    getOptions(type: string): LineOptions {
       return {
         responsive: true,
         maintainAspectRatio: false,
@@ -260,11 +270,10 @@ export default defineComponent({
         plugins: {
           title: {
             display: type === 'main',
-            text: 'drag: zoom, shift+drag: pan, double click: reset zoom',
+            text: this.locale.chartZoomHint,
             position: 'top',
             align: 'center',
           },
-          // @ts-expect-error: bug in chart.js types
           customEventListener: {
             chartType: type,
             instance: this,
@@ -331,7 +340,7 @@ export default defineComponent({
 </script>
 <template>
   <div>
-    <div class="ui header tw-flex tw-items-center tw-justify-between">
+    <div class="ui header flex-left-right">
       <div>
         <relative-time
           v-if="xAxisMin && xAxisMin > 0"
@@ -384,7 +393,7 @@ export default defineComponent({
           <SvgIcon name="gitea-running" class="tw-mr-2 rotate-clockwise"/>
           {{ locale.loadingInfo }}
         </div>
-        <div v-else class="text red">
+        <div v-else class="tw-text-red">
           <SvgIcon name="octicon-x-circle-fill"/>
           {{ errorText }}
         </div>
@@ -416,8 +425,8 @@ export default defineComponent({
                   {{ contributor.total_commits.toLocaleString() }} {{ locale.contributionType.commits }}
                 </a>
               </strong>
-              <strong v-if="contributor.total_additions" class="text green">{{ contributor.total_additions.toLocaleString() }}++ </strong>
-              <strong v-if="contributor.total_deletions" class="text red">
+              <strong v-if="contributor.total_additions" class="tw-text-green">{{ contributor.total_additions.toLocaleString() }}++ </strong>
+              <strong v-if="contributor.total_deletions" class="tw-text-red">
                 {{ contributor.total_deletions.toLocaleString() }}--</strong>
             </p>
           </div>

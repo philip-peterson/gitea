@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,21 +18,22 @@ import (
 	"strings"
 	"time"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	git_model "code.gitea.io/gitea/models/git"
-	perm_model "code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/auth/httpauth"
-	"code.gitea.io/gitea/modules/httplib"
-	"code.gitea.io/gitea/modules/json"
-	lfs_module "code.gitea.io/gitea/modules/lfs"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/storage"
-	"code.gitea.io/gitea/services/context"
+	auth_model "gitea.dev/models/auth"
+	git_model "gitea.dev/models/git"
+	perm_model "gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/auth/httpauth"
+	"gitea.dev/modules/httplib"
+	"gitea.dev/modules/json"
+	lfs_module "gitea.dev/modules/lfs"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/storage"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/context"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -43,7 +43,6 @@ type requestContext struct {
 	User          string
 	Repo          string
 	Authorization string
-	Method        string
 	RepoGitURL    string
 }
 
@@ -174,7 +173,7 @@ func DownloadHandler(ctx *context.Context) {
 	if len(filename) > 0 {
 		decodedFilename, err := base64.RawURLEncoding.DecodeString(filename)
 		if err == nil {
-			ctx.Resp.Header().Set("Content-Disposition", "attachment; filename=\""+string(decodedFilename)+"\"")
+			ctx.Resp.Header().Set("Content-Disposition", httplib.EncodeContentDispositionAttachment(string(decodedFilename)))
 			ctx.Resp.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
 		}
 	}
@@ -428,7 +427,6 @@ func getRequestContext(ctx *context.Context) *requestContext {
 		User:          ownerName,
 		Repo:          repoName,
 		Authorization: ctx.Req.Header.Get("Authorization"),
-		Method:        ctx.Req.Method,
 		RepoGitURL:    httplib.GuessCurrentAppURL(ctx) + url.PathEscape(ownerName) + "/" + url.PathEscape(repoName+".git"),
 	}
 }
@@ -487,40 +485,33 @@ func buildObjectResponse(rc *requestContext, pointer lfs_module.Pointer, downloa
 		rep.Error = err
 	} else {
 		rep.Actions = make(map[string]*lfs_module.Link)
-
-		header := make(map[string]string)
-
-		if len(rc.Authorization) > 0 {
-			header["Authorization"] = rc.Authorization
-		}
-
 		if download {
 			var link *lfs_module.Link
 			if setting.LFS.Storage.ServeDirect() {
 				// If we have a signed url (S3, object storage), redirect to this directly.
-				u, err := storage.LFS.URL(pointer.RelativePath(), pointer.Oid, rc.Method, nil)
+				// DO NOT USE the http POST method coming from the lfs batch endpoint
+				u, err := storage.LFS.ServeDirectURL(pointer.RelativePath(), pointer.Oid, http.MethodGet, nil)
 				if u != nil && err == nil {
-					// Presigned url does not need the Authorization header
-					// https://github.com/go-gitea/gitea/issues/21525
-					delete(header, "Authorization")
-					link = &lfs_module.Link{Href: u.String(), Header: header}
+					link = lfs_module.NewLink(u.String()) // Presigned url does not need the Authorization header
 				}
 			}
 			if link == nil {
-				link = &lfs_module.Link{Href: rc.DownloadLink(pointer), Header: header}
+				link = lfs_module.NewLink(rc.DownloadLink(pointer)).WithHeader("Authorization", rc.Authorization)
 			}
 			rep.Actions["download"] = link
 		}
 		if upload {
-			rep.Actions["upload"] = &lfs_module.Link{Href: rc.UploadLink(pointer), Header: header}
+			// Set Transfer-Encoding header to enable chunked uploads. Required by git-lfs client to do chunked transfer.
+			// See: https://github.com/git-lfs/git-lfs/blob/main/tq/basic_upload.go#L58-59
+			rep.Actions["upload"] = lfs_module.NewLink(rc.UploadLink(pointer)).
+				WithHeader("Authorization", rc.Authorization).
+				WithHeader("Transfer-Encoding", "chunked")
 
-			verifyHeader := make(map[string]string)
-			maps.Copy(verifyHeader, header)
-
-			// This is only needed to workaround https://github.com/git-lfs/git-lfs/issues/3662
-			verifyHeader["Accept"] = lfs_module.AcceptHeader
-
-			rep.Actions["verify"] = &lfs_module.Link{Href: rc.VerifyLink(pointer), Header: verifyHeader}
+			// "Accept" header is the workaround for git-lfs < 2.8.0 (before 2019).
+			// This workaround could be removed in the future: https://github.com/git-lfs/git-lfs/issues/3662
+			rep.Actions["verify"] = lfs_module.NewLink(rc.VerifyLink(pointer)).
+				WithHeader("Authorization", rc.Authorization).
+				WithHeader("Accept", lfs_module.AcceptHeader)
 		}
 	}
 	return rep
@@ -550,8 +541,7 @@ func authenticate(ctx *context.Context, repository *repo_model.Repository, autho
 		accessMode = perm_model.AccessModeWrite
 	}
 
-	if ctx.Data["IsActionsToken"] == true {
-		taskID := ctx.Data["ActionsTaskID"].(int64)
+	if taskID, ok := user_model.GetActionsUserTaskID(ctx.Doer); ok {
 		perm, err := access_model.GetActionsUserRepoPermission(ctx, repository, ctx.Doer, taskID)
 		if err != nil {
 			log.Error("Unable to GetActionsUserRepoPermission for task[%d] Error: %v", taskID, err)
@@ -561,9 +551,9 @@ func authenticate(ctx *context.Context, repository *repo_model.Repository, autho
 	}
 
 	// it works for both anonymous request and signed-in user, then perm.CanAccess will do the permission check
-	perm, err := access_model.GetUserRepoPermission(ctx, repository, ctx.Doer)
+	perm, err := access_model.GetDoerRepoPermission(ctx, repository, ctx.Doer)
 	if err != nil {
-		log.Error("Unable to GetUserRepoPermission for user %-v in repo %-v Error: %v", ctx.Doer, repository, err)
+		log.Error("Unable to GetDoerRepoPermission for user %-v in repo %-v Error: %v", ctx.Doer, repository, err)
 		return false
 	}
 
@@ -615,6 +605,18 @@ func handleLFSToken(ctx stdCtx.Context, tokenSHA string, target *repo_model.Repo
 	if err != nil {
 		log.Error("Unable to GetUserById[%d]: Error: %v", claims.UserID, err)
 		return nil, err
+	}
+	if !u.IsActive || u.ProhibitLogin {
+		return nil, util.NewPermissionDeniedErrorf("not allowed to access any repository")
+	}
+
+	perm, err := access_model.GetDoerRepoPermission(ctx, target, u)
+	if err != nil {
+		log.Error("Unable to GetDoerRepoPermission for user[%d] repo[%d]: %v", claims.UserID, target.ID, err)
+		return nil, err
+	}
+	if !perm.CanAccess(mode, unit.TypeCode) {
+		return nil, util.NewPermissionDeniedErrorf("no permission to access the repository")
 	}
 	return u, nil
 }

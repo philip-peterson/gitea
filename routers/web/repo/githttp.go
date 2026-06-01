@@ -5,7 +5,6 @@
 package repo
 
 import (
-	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -20,21 +19,22 @@ import (
 	"sync"
 	"time"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/gitprotocol"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/log"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/services/context"
-	repo_service "code.gitea.io/gitea/services/repository"
+	auth_model "gitea.dev/models/auth"
+	"gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitprotocol"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/log"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	"gitea.dev/services/context"
+	repo_service "gitea.dev/services/repository"
 
 	"github.com/go-chi/cors"
 )
@@ -58,9 +58,9 @@ func CorsHandler() func(next http.Handler) http.Handler {
 	}
 }
 
-// httpBase implementation git smart HTTP protocol
-func httpBase(ctx *context.Context) *serviceHandler {
-	username := ctx.PathParam("username")
+// httpBase does the common work for git http services,
+// including early response, authentication, repository lookup and permission check.
+func httpBase(ctx *context.Context, optGitService ...string) *serviceHandler {
 	reponame := strings.TrimSuffix(ctx.PathParam("reponame"), ".git")
 
 	if ctx.FormString("go-get") == "1" {
@@ -68,20 +68,24 @@ func httpBase(ctx *context.Context) *serviceHandler {
 		return nil
 	}
 
+	var serviceType string
 	var isPull, receivePack bool
-	service := ctx.FormString("service")
-	if service == "git-receive-pack" ||
-		strings.HasSuffix(ctx.Req.URL.Path, "git-receive-pack") {
-		isPull = false
+	switch util.OptionalArg(optGitService) {
+	case "git-receive-pack":
+		serviceType = ServiceTypeReceivePack
 		receivePack = true
-	} else if service == "git-upload-pack" ||
-		strings.HasSuffix(ctx.Req.URL.Path, "git-upload-pack") {
+		log.Debug("httpBase: detected receive-pack POST for %s", ctx.Req.URL.Path)
+	case "git-upload-pack":
+		serviceType = ServiceTypeUploadPack
 		isPull = true
-	} else if service == "git-upload-archive" ||
-		strings.HasSuffix(ctx.Req.URL.Path, "git-upload-archive") {
+	case "git-upload-archive":
+		serviceType = ServiceTypeUploadArchive
 		isPull = true
-	} else {
+	case "":
 		isPull = ctx.Req.Method == http.MethodHead || ctx.Req.Method == http.MethodGet
+	default: // unknown service
+		ctx.Resp.WriteHeader(http.StatusBadRequest)
+		return nil
 	}
 
 	var accessMode perm.AccessMode
@@ -129,10 +133,7 @@ func httpBase(ctx *context.Context) *serviceHandler {
 
 	// Only public pull don't need auth.
 	isPublicPull := repoExist && !repo.IsPrivate && isPull
-	var (
-		askAuth = !isPublicPull || setting.Service.RequireSignInViewStrict
-		environ []string
-	)
+	askAuth := !isPublicPull || setting.Service.RequireSignInViewStrict
 
 	// don't allow anonymous pulls if organization is not public
 	if isPublicPull {
@@ -165,7 +166,7 @@ func httpBase(ctx *context.Context) *serviceHandler {
 			return nil
 		}
 
-		if ctx.IsBasicAuth && ctx.Data["IsApiToken"] != true && ctx.Data["IsActionsToken"] != true {
+		if ctx.IsBasicAuth && ctx.Data["IsApiToken"] != true && !ctx.Doer.IsGiteaActions() {
 			_, err = auth_model.GetTwoFactorByUID(ctx, ctx.Doer.ID)
 			if err == nil {
 				// TODO: This response should be changed to "invalid credentials" for security reasons once the expectation behind it (creating an app token to authenticate) is properly documented
@@ -182,60 +183,27 @@ func httpBase(ctx *context.Context) *serviceHandler {
 			return nil
 		}
 
-		environ = []string{
-			repo_module.EnvRepoUsername + "=" + username,
-			repo_module.EnvRepoName + "=" + reponame,
-			repo_module.EnvPusherName + "=" + ctx.Doer.Name,
-			repo_module.EnvPusherID + fmt.Sprintf("=%d", ctx.Doer.ID),
-			repo_module.EnvAppURL + "=" + setting.AppURL,
-		}
-
 		if repoExist {
-			// Because of special ref "refs/for" .. , need delay write permission check
-			if git.DefaultFeatures().SupportProcReceive {
+			// Only the main code repo accepts refs/for pushes, so wiki pushes must keep write checks.
+			if git.DefaultFeatures().SupportProcReceive && !isWiki {
 				accessMode = perm.AccessModeRead
 			}
 
-			if ctx.Data["IsActionsToken"] == true {
-				taskID := ctx.Data["ActionsTaskID"].(int64)
-				p, err := access_model.GetActionsUserRepoPermission(ctx, repo, ctx.Doer, taskID)
-				if err != nil {
-					ctx.ServerError("GetActionsUserRepoPermission", err)
-					return nil
-				}
+			p, err := access_model.GetDoerRepoPermission(ctx, repo, ctx.Doer)
+			if err != nil {
+				ctx.ServerError("GetDoerRepoPermission", err)
+				return nil
+			}
 
-				if !p.CanAccess(accessMode, unitType) {
-					ctx.PlainText(http.StatusNotFound, "Repository not found")
-					return nil
-				}
-				environ = append(environ, fmt.Sprintf("%s=%d", repo_module.EnvActionPerm, p.UnitAccessMode(unitType)))
-			} else {
-				p, err := access_model.GetUserRepoPermission(ctx, repo, ctx.Doer)
-				if err != nil {
-					ctx.ServerError("GetUserRepoPermission", err)
-					return nil
-				}
-
-				if !p.CanAccess(accessMode, unitType) {
-					ctx.PlainText(http.StatusNotFound, "Repository not found")
-					return nil
-				}
+			if !p.CanAccess(accessMode, unitType) {
+				ctx.PlainText(http.StatusNotFound, "Repository not found")
+				return nil
 			}
 
 			if !isPull && repo.IsMirror {
 				ctx.PlainText(http.StatusForbidden, "mirror repository is read-only")
 				return nil
 			}
-		}
-
-		if !ctx.Doer.KeepEmailPrivate {
-			environ = append(environ, repo_module.EnvPusherEmail+"="+ctx.Doer.Email)
-		}
-
-		if isWiki {
-			environ = append(environ, repo_module.EnvRepoIsWiki+"=true")
-		} else {
-			environ = append(environ, repo_module.EnvRepoIsWiki+"=false")
 		}
 	}
 
@@ -280,17 +248,18 @@ func httpBase(ctx *context.Context) *serviceHandler {
 				ctx.PlainText(http.StatusForbidden, "repository wiki is disabled")
 				return nil
 			}
-			log.Error("Failed to get the wiki unit in %-v Error: %v", repo, err)
 			ctx.ServerError("GetUnit(UnitTypeWiki) for "+repo.FullName(), err)
 			return nil
 		}
 	}
 
-	environ = append(environ, repo_module.EnvRepoID+fmt.Sprintf("=%d", repo.ID))
+	var environ []string
+	if !isPull {
+		// if not "pull", then must be "push", and doer must exist
+		environ = repo_module.DoerPushingEnvironment(ctx.Doer, repo, isWiki)
+	}
 
-	ctx.Req.URL.Path = strings.ToLower(ctx.Req.URL.Path) // blue: In case some repo name has upper case name
-
-	return &serviceHandler{repo, isWiki, environ}
+	return &serviceHandler{serviceType, repo, isWiki, environ}
 }
 
 var (
@@ -333,6 +302,8 @@ func dummyInfoRefs(ctx *context.Context) {
 }
 
 type serviceHandler struct {
+	serviceType string
+
 	repo    *repo_model.Repository
 	isWiki  bool
 	environ []string
@@ -353,7 +324,7 @@ func setHeaderNoCache(ctx *context.Context) {
 
 func setHeaderCacheForever(ctx *context.Context) {
 	now := time.Now().Unix()
-	expires := now + 31536000
+	expires := now + 365*86400 // 365 days
 	ctx.Resp.Header().Set("Date", strconv.FormatInt(now, 10))
 	ctx.Resp.Header().Set("Expires", strconv.FormatInt(expires, 10))
 	ctx.Resp.Header().Set("Cache-Control", "public, max-age=31536000")
@@ -370,7 +341,7 @@ func isSlashRune(r rune) bool { return r == '/' || r == '\\' }
 
 func (h *serviceHandler) sendFile(ctx *context.Context, contentType, file string) {
 	if containsParentDirectorySeparator(file) {
-		log.Error("request file path contains invalid path: %v", file)
+		log.Debug("request file path contains invalid path: %v", file)
 		ctx.Resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -383,49 +354,89 @@ func (h *serviceHandler) sendFile(ctx *context.Context, contentType, file string
 // one or more key=value pairs separated by colons
 var safeGitProtocolHeader = regexp.MustCompile(`^[0-9a-zA-Z]+=[0-9a-zA-Z]+(:[0-9a-zA-Z]+=[0-9a-zA-Z]+)*$`)
 
-func prepareGitCmdWithAllowedService(service string) (*gitcmd.Command, error) {
-	if service == ServiceTypeReceivePack {
-		return gitcmd.NewCommand(ServiceTypeReceivePack), nil
+func prepareGitCmdWithAllowedService(service string, allowedServices []string) *gitcmd.Command {
+	if !slices.Contains(allowedServices, service) {
+		return nil
 	}
-	if service == ServiceTypeUploadPack {
-		return gitcmd.NewCommand(ServiceTypeUploadPack), nil
+	switch service {
+	case ServiceTypeReceivePack:
+		return gitcmd.NewCommand(ServiceTypeReceivePack)
+	case ServiceTypeUploadPack:
+		return gitcmd.NewCommand(ServiceTypeUploadPack)
+	case ServiceTypeUploadArchive:
+		return gitcmd.NewCommand(ServiceTypeUploadArchive)
+	default:
+		return nil
 	}
-	return nil, fmt.Errorf("service %q is not allowed", service)
 }
 
-func serviceRPC(ctx *context.Context, h *serviceHandler, service string) {
-	defer func() {
-		if err := ctx.Req.Body.Close(); err != nil {
-			log.Error("serviceRPC: Close: %v", err)
-		}
-	}()
+// byteCountWriter wraps an io.Writer and counts bytes successfully written.
+// It is used on the receive-pack response path so we can detect zero-byte
+// failures and inject a proper error pkt-line afterward.
+//
+// It also implements http.Flusher so that timely Flush calls from git (or the
+// exec copy goroutine) are propagated. Without this, status lines or early
+// error packets can stay buffered in the HTTP chunked writer, causing git
+// clients to see "hung up" or "bad line length" because they don't receive
+// data promptly.
+type byteCountWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *byteCountWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// Flush implements http.Flusher by delegating to the underlying writer when possible.
+func (c *byteCountWriter) Flush() {
+	if f, ok := c.w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func serviceRPC(ctx *context.Context, service string) {
+	defer ctx.Req.Body.Close()
+
+	h := httpBase(ctx, "git-"+service)
+	if h == nil {
+		return
+	}
 
 	expectedContentType := fmt.Sprintf("application/x-git-%s-request", service)
 	if ctx.Req.Header.Get("Content-Type") != expectedContentType {
-		log.Error("Content-Type (%q) doesn't match expected: %q", ctx.Req.Header.Get("Content-Type"), expectedContentType)
-		// FIXME: why it's 401 if the content type is unexpected?
-		ctx.Resp.WriteHeader(http.StatusUnauthorized)
+		log.Debug("Content-Type (%q) doesn't match expected: %q", ctx.Req.Header.Get("Content-Type"), expectedContentType)
+		ctx.Resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	cmd, err := prepareGitCmdWithAllowedService(service)
-	if err != nil {
-		log.Error("Failed to prepareGitCmdWithService: %v", err)
-		// FIXME: why it's 401 if the service type doesn't supported?
-		ctx.Resp.WriteHeader(http.StatusUnauthorized)
+	cmd := prepareGitCmdWithAllowedService(service, []string{ServiceTypeUploadPack, ServiceTypeReceivePack, ServiceTypeUploadArchive})
+	if cmd == nil {
+		ctx.Resp.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	// git upload-archive does not have a "--stateless-rpc" option
+	if service == ServiceTypeUploadPack || service == ServiceTypeReceivePack {
+		cmd.AddArguments("--stateless-rpc")
 	}
 
 	ctx.Resp.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", service))
+	// Prevent response compression middleware (e.g. gzhttp when EnableGzip is on)
+	// from wrapping the body. The git smart protocol is a raw pkt-line stream;
+	// compressing it produces "bad line length character" errors on clients.
+	ctx.Resp.Header().Set("Content-Encoding", "identity")
+	ctx.Resp.WriteHeader(http.StatusOK)
 
 	reqBody := ctx.Req.Body
 
 	// Handle GZIP.
 	if ctx.Req.Header.Get("Content-Encoding") == "gzip" {
+		var err error
 		reqBody, err = gzip.NewReader(reqBody)
 		if err != nil {
-			log.Error("Fail to create gzip reader: %v", err)
-			ctx.Resp.WriteHeader(http.StatusInternalServerError)
+			ctx.Resp.WriteHeader(http.StatusBadRequest)
 			return
 		}
 	}
@@ -437,23 +448,18 @@ func serviceRPC(ctx *context.Context, h *serviceHandler, service string) {
 		h.environ = append(h.environ, "GIT_PROTOCOL="+protocol)
 	}
 
-	runGitCmd := func(stdin io.Reader, stdout io.Writer) error {
-		var stderr bytes.Buffer
-		gitErr := gitrepo.RunCmd(ctx, h.getStorageRepo(), cmd.AddArguments("--stateless-rpc", ".").
-			WithEnv(append(os.Environ(), h.environ...)).
-			WithStderr(&stderr).
-			WithStdin(stdin).
-			WithStdout(stdout).
-			WithUseContextTimeout(true))
-		if gitErr != nil && !git.IsErrCanceledOrKilled(gitErr) {
-			log.Error("Fail to serve RPC(%s) in %s: %v - %s", service, h.getStorageRepo().RelativePath(), gitErr, stderr.String())
-		}
-		return gitErr
-	}
-
 	if service == ServiceTypeReceivePack && setting.Repository.MaxPushBlobSize > 0 {
 		maxSize := setting.Repository.MaxPushBlobSize
-		if err := gitprotocol.ReceivePack(reqBody, ctx.Resp,
+		cw := &byteCountWriter{w: ctx.Resp}
+		runGitCmd := func(stdin io.Reader, stdout io.Writer) error {
+			return gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
+				WithEnv(append(os.Environ(), h.environ...)).
+				WithStdinCopy(stdin).
+				WithStdoutCopy(stdout),
+			)
+		}
+		var err error
+		if err = gitprotocol.ReceivePack(reqBody, ctx.Resp,
 			func(hdr gitprotocol.ObjectHeader) error {
 				// Delta objects report the size of the *delta instructions*, not the
 				// final expanded object. When a blob size limit is active we must
@@ -468,54 +474,82 @@ func serviceRPC(ctx *context.Context, h *serviceHandler, service string) {
 				}
 				return nil
 			},
-			runGitCmd,
-		); err != nil {
+			func(stdin io.Reader, _ io.Writer) error {
+				// Route git stdout through the counter so we can inject a visible
+				// error if runGit fails before writing anything.
+				return runGitCmd(stdin, cw)
+			},
+		); err != nil && !gitcmd.IsErrorCanceledOrKilled(err) {
 			if errors.Is(err, gitprotocol.ErrPushRejectedByInterceptor) {
-				// Policy rejection — client already received a clean error.
-				// This is the place for Warn-level audit logging + future metrics.
+				// Policy rejection (e.g. MAX_PUSH_BLOB_SIZE). Client already received
+				// a clean git error response. Log for auditability + future metrics.
 				log.Warn("Push rejected by interceptor: repo=%s pusher=%s err=%v",
 					h.getStorageRepo().RelativePath(), ctx.Doer.Name, err)
-			} else if !git.IsErrCanceledOrKilled(err) {
+			} else {
 				log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+			}
+		}
+		if cw.n == 0 {
+			// ReceivePack returns nil after writing its own rejection/early error.
+			// Only inject when we got a runGit error and still wrote zero bytes.
+			msg := ""
+			if rse, ok := err.(gitcmd.RunStdError); ok && rse.Stderr() != "" {
+				msg = rse.Stderr()
+			} else if err != nil {
+				msg = err.Error()
+			}
+			if msg != "" {
+				_ = gitprotocol.WriteReceivePackError(ctx.Resp, "git receive-pack: "+msg, false)
 			}
 		}
 		return
 	}
 
-	if err := runGitCmd(reqBody, ctx.Resp); err != nil {
-		return
+	// Normal path (no MaxPushBlobSize limit active)
+	stdout := ctx.Resp
+
+	start := time.Now()
+	log.Debug("serviceRPC: normal path, starting command: %s", cmd.LogString())
+
+	fullEnv := append(os.Environ(), h.environ...)
+	finalCmd := cmd.AddArguments(".")
+	cmdErr := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), finalCmd.
+		WithEnv(fullEnv).
+		WithStdinCopy(reqBody).
+		WithStdoutCopy(stdout),
+	)
+	dur := time.Since(start)
+
+	if cmdErr != nil {
+		ctxErr := ctx.Err()
+		if gitcmd.IsErrorCanceledOrKilled(cmdErr) {
+			log.Debug("serviceRPC: command canceled/killed after %s (ctxErr=%v): %v", dur, ctxErr, cmdErr)
+		} else {
+			log.Error("Fail to serve RPC(%s) in %s after %s (ctxErr=%v): %v", service, h.getStorageRepo().RelativePath(), dur, ctxErr, cmdErr)
+		}
+	} else {
+		log.Debug("serviceRPC: normal command succeeded in %s", dur)
 	}
 }
 
 const (
-	ServiceTypeUploadPack  = "upload-pack"
-	ServiceTypeReceivePack = "receive-pack"
+	ServiceTypeUploadPack    = "upload-pack"
+	ServiceTypeReceivePack   = "receive-pack"
+	ServiceTypeUploadArchive = "upload-archive"
 )
 
 // ServiceUploadPack implements Git Smart HTTP protocol
 func ServiceUploadPack(ctx *context.Context) {
-	h := httpBase(ctx)
-	if h != nil {
-		serviceRPC(ctx, h, ServiceTypeUploadPack)
-	}
+	serviceRPC(ctx, ServiceTypeUploadPack)
 }
 
 // ServiceReceivePack implements Git Smart HTTP protocol
 func ServiceReceivePack(ctx *context.Context) {
-	h := httpBase(ctx)
-	if h != nil {
-		serviceRPC(ctx, h, ServiceTypeReceivePack)
-	}
+	serviceRPC(ctx, ServiceTypeReceivePack)
 }
 
-func getServiceType(ctx *context.Context) string {
-	switch ctx.Req.FormValue("service") {
-	case "git-" + ServiceTypeUploadPack:
-		return ServiceTypeUploadPack
-	case "git-" + ServiceTypeReceivePack:
-		return ServiceTypeReceivePack
-	}
-	return ""
+func ServiceUploadArchive(ctx *context.Context) {
+	serviceRPC(ctx, ServiceTypeUploadArchive)
 }
 
 func packetWrite(str string) []byte {
@@ -528,36 +562,47 @@ func packetWrite(str string) []byte {
 
 // GetInfoRefs implements Git dumb HTTP
 func GetInfoRefs(ctx *context.Context) {
-	h := httpBase(ctx)
+	h := httpBase(ctx, ctx.FormString("service")) // git http protocol: "?service=git-<service>"
 	if h == nil {
 		return
 	}
 	setHeaderNoCache(ctx)
-	service := getServiceType(ctx)
-	cmd, err := prepareGitCmdWithAllowedService(service)
-	if err == nil {
-		if protocol := ctx.Req.Header.Get("Git-Protocol"); protocol != "" && safeGitProtocolHeader.MatchString(protocol) {
-			h.environ = append(h.environ, "GIT_PROTOCOL="+protocol)
-		}
-		h.environ = append(os.Environ(), h.environ...)
-
-		refs, _, err := gitrepo.RunCmdBytes(ctx, h.getStorageRepo(), cmd.AddArguments("--stateless-rpc", "--advertise-refs", ".").
-			WithEnv(h.environ))
-		if err != nil {
-			log.Error(fmt.Sprintf("%v - %s", err, string(refs)))
-		}
-
-		ctx.Resp.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-advertisement", service))
-		ctx.Resp.WriteHeader(http.StatusOK)
-		_, _ = ctx.Resp.Write(packetWrite("# service=git-" + service + "\n"))
-		_, _ = ctx.Resp.Write([]byte("0000"))
-		_, _ = ctx.Resp.Write(refs)
-	} else {
+	if h.serviceType == "" {
+		// it's said that some legacy git clients will send requests to "/info/refs" without "service" parameter,
+		// although there should be no such case client in the modern days. TODO: not quite sure why we need this UpdateServerInfo logic
 		if err := gitrepo.UpdateServerInfo(ctx, h.getStorageRepo()); err != nil {
-			log.Error("Failed to update server info: %v", err)
+			ctx.ServerError("UpdateServerInfo", err)
+			return
 		}
 		h.sendFile(ctx, "text/plain; charset=utf-8", "info/refs")
+		return
 	}
+
+	cmd := prepareGitCmdWithAllowedService(h.serviceType, []string{ServiceTypeUploadPack, ServiceTypeReceivePack})
+	if cmd == nil {
+		ctx.Resp.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if protocol := ctx.Req.Header.Get("Git-Protocol"); protocol != "" && safeGitProtocolHeader.MatchString(protocol) {
+		h.environ = append(h.environ, "GIT_PROTOCOL="+protocol)
+	}
+	h.environ = append(os.Environ(), h.environ...)
+
+	cmd = cmd.AddArguments("--stateless-rpc", "--advertise-refs", ".").WithEnv(h.environ)
+	refs, _, err := gitrepo.RunCmdBytes(ctx, h.getStorageRepo(), cmd)
+	if err != nil {
+		ctx.ServerError("RunGitServiceAdvertiseRefs", err)
+		return
+	}
+
+	ctx.Resp.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-advertisement", h.serviceType))
+	// Prevent response compression middleware from corrupting the git advertisement pkt stream.
+	ctx.Resp.Header().Set("Content-Encoding", "identity")
+	ctx.Resp.WriteHeader(http.StatusOK)
+	_, _ = ctx.Resp.Write(packetWrite("# service=git-" + h.serviceType + "\n"))
+	_, _ = ctx.Resp.Write([]byte("0000"))
+	_, _ = ctx.Resp.Write(refs)
 }
 
 // GetTextFile implements Git dumb HTTP

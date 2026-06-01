@@ -10,31 +10,31 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
+	"path"
 	"strings"
 
-	"code.gitea.io/gitea/models/renderhelper"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unit"
-	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/charset"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/markup"
-	"code.gitea.io/gitea/modules/markup/markdown"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/routers/common"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
-	git_service "code.gitea.io/gitea/services/git"
-	notify_service "code.gitea.io/gitea/services/notify"
-	repo_service "code.gitea.io/gitea/services/repository"
-	wiki_service "code.gitea.io/gitea/services/wiki"
+	"gitea.dev/models/renderhelper"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unit"
+	"gitea.dev/modules/base"
+	"gitea.dev/modules/charset"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/markup"
+	"gitea.dev/modules/markup/markdown"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
+	"gitea.dev/modules/web"
+	"gitea.dev/routers/common"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
+	git_service "gitea.dev/services/git"
+	notify_service "gitea.dev/services/notify"
+	repo_service "gitea.dev/services/repository"
+	wiki_service "gitea.dev/services/wiki"
 )
 
 const (
@@ -47,8 +47,8 @@ const (
 
 // MustEnableWiki check if wiki is enabled, if external then redirect
 func MustEnableWiki(ctx *context.Context) {
-	if !ctx.Repo.CanRead(unit.TypeWiki) &&
-		!ctx.Repo.CanRead(unit.TypeExternalWiki) {
+	if !ctx.Repo.Permission.CanRead(unit.TypeWiki) &&
+		!ctx.Repo.Permission.CanRead(unit.TypeExternalWiki) {
 		if log.IsTrace() {
 			log.Trace("Permission Denied: User %-v cannot read %-v or %-v of repo %-v\n"+
 				"User in repo has Permissions: %-+v",
@@ -238,7 +238,7 @@ func renderViewPage(ctx *context.Context) (*git.Repository, *git.TreeEntry) {
 		ctx.Redirect(ctx.Repo.RepoLink + "/wiki/?action=_pages")
 	}
 	if isRaw {
-		ctx.Redirect(util.URLJoin(ctx.Repo.RepoLink, "wiki/raw", string(pageName)))
+		ctx.Redirect(ctx.Repo.RepoLink + "/wiki/raw/" + string(pageName))
 	}
 	if entry == nil || ctx.Written() {
 		return nil, nil
@@ -258,8 +258,7 @@ func renderViewPage(ctx *context.Context) (*git.Repository, *git.TreeEntry) {
 		defer markupWr.Close()
 		done := make(chan struct{})
 		go func() {
-			// We allow NBSP here this is rendered
-			escaped, _ = charset.EscapeControlReader(markupRd, buf, ctx.Locale, charset.RuneNBSP)
+			escaped, _ = charset.EscapeControlReader(markupRd, buf, ctx.Locale, charset.EscapeOptionsForView())
 			output = template.HTML(buf.String())
 			buf.Reset()
 			close(done)
@@ -277,12 +276,10 @@ func renderViewPage(ctx *context.Context) (*git.Repository, *git.TreeEntry) {
 		return nil, nil
 	}
 
-	if rctx.SidebarTocNode != nil {
+	if rctx.TocShowInSection == markup.TocShowInSidebar && len(rctx.TocHeadingItems) > 0 {
 		sb := strings.Builder{}
-		if err = markdown.SpecializedMarkdown(rctx).Renderer().Render(&sb, nil, rctx.SidebarTocNode); err != nil {
-			log.Error("Failed to render wiki sidebar TOC: %v", err)
-		}
-		ctx.Data["WikiSidebarTocHTML"] = templates.SanitizeHTML(sb.String())
+		markup.RenderTocHeadingItems(rctx, map[string]string{"open": ""}, &sb)
+		ctx.Data["WikiSidebarTocHTML"] = template.HTML(sb.String())
 	}
 
 	if !isSideBar {
@@ -337,9 +334,6 @@ func renderRevisionPage(ctx *context.Context) (*git.Repository, *git.TreeEntry) 
 	ctx.Data["Title"] = displayName
 	ctx.Data["title"] = displayName
 
-	ctx.Data["Username"] = ctx.Repo.Owner.Name
-	ctx.Data["Reponame"] = ctx.Repo.Repository.Name
-
 	// lookup filename in wiki - get page content, gitTree entry , real filename
 	_, entry, pageFilename, noEntry := wikiContentsByName(ctx, commit, pageName)
 	if noEntry {
@@ -373,7 +367,7 @@ func renderRevisionPage(ctx *context.Context) (*git.Repository, *git.TreeEntry) 
 		return nil, nil
 	}
 
-	pager := context.NewPagination(int(commitsCount), setting.Git.CommitsRangeSize, page, 5)
+	pager := context.NewPagination(commitsCount, setting.Git.CommitsRangeSize, page, 5)
 	pager.AddParamFromRequest(ctx.Req)
 	ctx.Data["Page"] = pager
 
@@ -426,14 +420,14 @@ func renderEditPage(ctx *context.Context) {
 func WikiPost(ctx *context.Context) {
 	switch ctx.FormString("action") {
 	case "_new":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !ctx.Repo.Permission.CanWrite(unit.TypeWiki) {
 			ctx.NotFound(nil)
 			return
 		}
 		NewWikiPost(ctx)
 		return
 	case "_delete":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !ctx.Repo.Permission.CanWrite(unit.TypeWiki) {
 			ctx.NotFound(nil)
 			return
 		}
@@ -441,7 +435,7 @@ func WikiPost(ctx *context.Context) {
 		return
 	}
 
-	if !ctx.Repo.CanWrite(unit.TypeWiki) {
+	if !ctx.Repo.Permission.CanWrite(unit.TypeWiki) {
 		ctx.NotFound(nil)
 		return
 	}
@@ -450,7 +444,7 @@ func WikiPost(ctx *context.Context) {
 
 // Wiki renders single wiki page
 func Wiki(ctx *context.Context) {
-	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
+	ctx.Data["CanWriteWiki"] = ctx.Repo.Permission.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
 
 	switch ctx.FormString("action") {
 	case "_pages":
@@ -460,14 +454,14 @@ func Wiki(ctx *context.Context) {
 		WikiRevision(ctx)
 		return
 	case "_edit":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !ctx.Repo.Permission.CanWrite(unit.TypeWiki) {
 			ctx.NotFound(nil)
 			return
 		}
 		EditWiki(ctx)
 		return
 	case "_new":
-		if !ctx.Repo.CanWrite(unit.TypeWiki) {
+		if !ctx.Repo.Permission.CanWrite(unit.TypeWiki) {
 			ctx.NotFound(nil)
 			return
 		}
@@ -492,9 +486,9 @@ func Wiki(ctx *context.Context) {
 	}
 
 	wikiPath := entry.Name()
-	if markup.DetectMarkupTypeByFileName(wikiPath) != markdown.MarkupName {
-		ext := strings.ToUpper(filepath.Ext(wikiPath))
-		ctx.Data["FormatWarning"] = ext + " rendering is not supported at the moment. Rendered as Markdown."
+	detectedRender := markup.DetectRendererTypeByFilename(wikiPath)
+	if detectedRender == nil || detectedRender.Name() != markdown.MarkupName {
+		ctx.Data["FormatWarning"] = "File extension " + path.Ext(wikiPath) + " is not supported at the moment. Rendered as Markdown."
 	}
 	// Get last change information.
 	lastCommit, err := wikiGitRepo.GetCommitByPath(wikiPath)
@@ -509,7 +503,7 @@ func Wiki(ctx *context.Context) {
 
 // WikiRevision renders file revision list of wiki page
 func WikiRevision(ctx *context.Context) {
-	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
+	ctx.Data["CanWriteWiki"] = ctx.Repo.Permission.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
 
 	if !repo_service.HasWiki(ctx, ctx.Repo.Repository) {
 		ctx.Data["Title"] = ctx.Tr("repo.wiki")
@@ -547,7 +541,7 @@ func WikiPages(ctx *context.Context) {
 	}
 
 	ctx.Data["Title"] = ctx.Tr("repo.wiki.pages")
-	ctx.Data["CanWriteWiki"] = ctx.Repo.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
+	ctx.Data["CanWriteWiki"] = ctx.Repo.Permission.CanWrite(unit.TypeWiki) && !ctx.Repo.Repository.IsArchived
 
 	_, commit, err := findWikiRepoCommit(ctx)
 	if err != nil {
@@ -670,7 +664,7 @@ func NewWikiPost(ctx *context.Context) {
 	}
 
 	if util.IsEmptyString(form.Title) {
-		ctx.RenderWithErr(ctx.Tr("repo.issues.new.title_empty"), tplWikiNew, form)
+		ctx.RenderWithErrDeprecated(ctx.Tr("repo.issues.new.title_empty"), tplWikiNew, form)
 		return
 	}
 
@@ -683,10 +677,10 @@ func NewWikiPost(ctx *context.Context) {
 	if err := wiki_service.AddWikiPage(ctx, ctx.Doer, ctx.Repo.Repository, wikiName, form.Content, form.Message); err != nil {
 		if repo_model.IsErrWikiReservedName(err) {
 			ctx.Data["Err_Title"] = true
-			ctx.RenderWithErr(ctx.Tr("repo.wiki.reserved_page", wikiName), tplWikiNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("repo.wiki.reserved_page", wikiName), tplWikiNew, &form)
 		} else if repo_model.IsErrWikiAlreadyExist(err) {
 			ctx.Data["Err_Title"] = true
-			ctx.RenderWithErr(ctx.Tr("repo.wiki.page_already_exists"), tplWikiNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("repo.wiki.page_already_exists"), tplWikiNew, &form)
 		} else {
 			ctx.ServerError("AddWikiPage", err)
 		}

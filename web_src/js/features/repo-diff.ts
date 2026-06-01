@@ -5,12 +5,14 @@ import {validateTextareaNonEmpty} from './comp/ComboMarkdownEditor.ts';
 import {initViewedCheckboxListenerFor, initExpandAndCollapseFilesButton} from './pull-view-file.ts';
 import {initImageDiff} from './imagediff.ts';
 import {showErrorToast} from '../modules/toast.ts';
-import {submitEventSubmitter, queryElemSiblings, hideElem, showElem, animateOnce, addDelegatedEventListener, createElementFromHTML, queryElems} from '../utils/dom.ts';
+import {queryElemSiblings, hideElem, showElem, animateOnce, addDelegatedEventListener, createElementFromHTML, queryElems} from '../utils/dom.ts';
+import {errorMessage} from '../modules/errors.ts';
 import {POST, GET} from '../modules/fetch.ts';
 import {createTippy} from '../modules/tippy.ts';
 import {invertFileFolding} from './file-fold.ts';
-import {parseDom, sleep} from '../utils.ts';
+import {parseDom} from '../utils.ts';
 import {registerGlobalSelectorFunc} from '../modules/observer.ts';
+import {performFetchActionTrigger} from './common-fetch-action.ts';
 
 function initRepoDiffFileBox(el: HTMLElement) {
   // switch between "rendered" and "source", for image and CSV files
@@ -40,8 +42,8 @@ function initRepoDiffConversationForm() {
       const formData = new FormData(form);
 
       // if the form is submitted by a button, append the button's name and value to the form data
-      const submitter = submitEventSubmitter(e);
-      const isSubmittedByButton = (submitter?.nodeName === 'BUTTON') || (submitter?.nodeName === 'INPUT' && submitter.type === 'submit');
+      const submitter = e.submitter;
+      const isSubmittedByButton = submitter instanceof HTMLButtonElement || (submitter instanceof HTMLInputElement && submitter.type === 'submit');
       if (isSubmittedByButton && submitter.name) {
         formData.append(submitter.name, submitter.value);
       }
@@ -56,8 +58,7 @@ function initRepoDiffConversationForm() {
       const idx = newConversationHolder.getAttribute('data-idx');
 
       form.closest('.conversation-holder')!.replaceWith(newConversationHolder);
-      // @ts-expect-error -- prevent further usage of the form because it should have been replaced
-      form = null;
+      (form as any) = null; // prevent further usage of the form because it should have been replaced
 
       if (trLineType) {
         // if there is a line-type for the "tr", it means the form is on the diff page
@@ -85,7 +86,7 @@ function initRepoDiffConversationForm() {
       }
     } catch (error) {
       console.error('Error:', error);
-      showErrorToast(`Submit form failed: ${error}`);
+      showErrorToast(`Submit form failed: ${errorMessage(error)}`);
     } finally {
       form?.classList.remove('is-loading');
     }
@@ -171,7 +172,8 @@ async function loadMoreFiles(btn: Element): Promise<boolean> {
     const respFileBoxes = respDoc.querySelector('#diff-file-boxes')!;
     // the response is a full HTML page, we need to extract the relevant contents:
     // * append the newly loaded file list items to the existing list
-    document.querySelector('#diff-incomplete')!.replaceWith(...Array.from(respFileBoxes.children));
+    const respFileBoxesChildren = Array.from(respFileBoxes.children); // "children:HTMLCollection" will be empty after replaceWith
+    document.querySelector('#diff-incomplete')!.replaceWith(...respFileBoxesChildren);
     onShowMoreFiles();
     return true;
   } catch (error) {
@@ -201,9 +203,8 @@ function initRepoDiffShowMore() {
       const resp = await response.text();
       const respDoc = parseDom(resp, 'text/html');
       const respFileBody = respDoc.querySelector('#diff-file-boxes .diff-file-body .file-body')!;
-      const respFileBodyChildren = Array.from(respFileBody.children); // respFileBody.children will be empty after replaceWith
+      const respFileBodyChildren = Array.from(respFileBody.children); // "children:HTMLCollection" will be empty after replaceWith
       el.parentElement!.replaceWith(...respFileBodyChildren);
-      for (const el of respFileBodyChildren) window.htmx.process(el);
       // FIXME: calling onShowMoreFiles is not quite right here.
       // But since onShowMoreFiles mixes "init diff box" and "init diff body" together,
       // so it still needs to call it to make the "ImageDiff" and something similar work.
@@ -250,8 +251,8 @@ async function onLocationHashChange() {
         const attrAutoLoadClicked = 'data-auto-load-clicked';
         if (expandButton.hasAttribute(attrAutoLoadClicked)) return;
         expandButton.setAttribute(attrAutoLoadClicked, 'true');
-        expandButton.click();
-        await sleep(500); // Wait for HTMX to load the content. FIXME: need to drop htmx in the future
+        // trigger the fetch action to load the hidden comments, after loading, it will try to find the target element again
+        await performFetchActionTrigger(expandButton, 'load');
         continue; // Try again to find the element
       }
     }

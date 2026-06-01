@@ -8,15 +8,15 @@ import (
 	"net/http"
 	"time"
 
-	"code.gitea.io/gitea/models/db"
-	issues_model "code.gitea.io/gitea/models/issues"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/routers/api/v1/utils"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/convert"
+	"gitea.dev/models/db"
+	issues_model "gitea.dev/models/issues"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/web"
+	"gitea.dev/routers/api/v1/utils"
+	"gitea.dev/services/context"
+	"gitea.dev/services/convert"
 )
 
 // ListTrackedTimes list all the tracked times of an issue
@@ -356,7 +356,7 @@ func DeleteTime(ctx *context.APIContext) {
 		return
 	}
 
-	time, err := issues_model.GetTrackedTimeByID(ctx, ctx.PathParamInt64("id"))
+	time, err := issues_model.GetTrackedTimeByID(ctx, issue.ID, ctx.PathParamInt64("id"))
 	if err != nil {
 		if db.IsErrNotExist(err) {
 			ctx.APIErrorNotFound(err)

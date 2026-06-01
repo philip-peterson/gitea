@@ -5,7 +5,7 @@
 
 package git
 
-import "code.gitea.io/gitea/modules/log"
+import "gitea.dev/modules/log"
 
 // Size returns the size of the entry
 func (te *TreeEntry) Size() int64 {
@@ -15,23 +15,19 @@ func (te *TreeEntry) Size() int64 {
 		return te.size
 	}
 
-	wr, rd, cancel, err := te.ptree.repo.CatFileBatchCheck(te.ptree.repo.Ctx)
+	batch, cancel, err := te.ptree.repo.CatFileBatch(te.ptree.repo.Ctx)
 	if err != nil {
 		log.Debug("error whilst reading size for %s in %s. Error: %v", te.ID.String(), te.ptree.repo.Path, err)
 		return 0
 	}
 	defer cancel()
-	_, err = wr.Write([]byte(te.ID.String() + "\n"))
-	if err != nil {
-		log.Debug("error whilst reading size for %s in %s. Error: %v", te.ID.String(), te.ptree.repo.Path, err)
-		return 0
-	}
-	_, _, te.size, err = ReadBatchLine(rd)
+	info, err := batch.QueryInfo(te.ID.String())
 	if err != nil {
 		log.Debug("error whilst reading size for %s in %s. Error: %v", te.ID.String(), te.ptree.repo.Path, err)
 		return 0
 	}
 
+	te.size = info.Size
 	te.sized = true
 	return te.size
 }

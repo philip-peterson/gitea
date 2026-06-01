@@ -10,12 +10,12 @@ import (
 	"slices"
 	"strings"
 
-	issues_model "code.gitea.io/gitea/models/issues"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/container"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/util"
+	issues_model "gitea.dev/models/issues"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/container"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/util"
 )
 
 // GenerateReleaseNotesOptions describes how to build release notes content.
@@ -113,7 +113,7 @@ func buildReleaseNotesContent(ctx context.Context, repo *repo_model.Repository, 
 
 	for _, pr := range prs {
 		prURL := pr.Issue.HTMLURL(ctx)
-		builder.WriteString(fmt.Sprintf("* %s in [#%d](%s)\n", pr.Issue.Title, pr.Issue.Index, prURL))
+		fmt.Fprintf(&builder, "* %s in [#%d](%s)\n", pr.Issue.Title, pr.Issue.Index, prURL)
 	}
 
 	builder.WriteString("\n")
@@ -121,7 +121,7 @@ func buildReleaseNotesContent(ctx context.Context, repo *repo_model.Repository, 
 	if len(contributors) > 0 {
 		builder.WriteString("## Contributors\n")
 		for _, contributor := range contributors {
-			builder.WriteString(fmt.Sprintf("* @%s\n", contributor.Name))
+			fmt.Fprintf(&builder, "* @%s\n", contributor.Name)
 		}
 		builder.WriteString("\n")
 	}
@@ -130,14 +130,14 @@ func buildReleaseNotesContent(ctx context.Context, repo *repo_model.Repository, 
 		builder.WriteString("## New Contributors\n")
 		for _, contributor := range newContributors {
 			prURL := contributor.Issue.HTMLURL(ctx)
-			builder.WriteString(fmt.Sprintf("* @%s made their first contribution in [#%d](%s)\n", contributor.Issue.Poster.Name, contributor.Issue.Index, prURL))
+			fmt.Fprintf(&builder, "* @%s made their first contribution in [#%d](%s)\n", contributor.Issue.Poster.Name, contributor.Issue.Index, prURL)
 		}
 		builder.WriteString("\n")
 	}
 
 	builder.WriteString("**Full Changelog**: ")
 	compareURL := fmt.Sprintf("%s/compare/%s...%s", repo.HTMLURL(ctx), util.PathEscapeSegments(baseRef), util.PathEscapeSegments(tagName))
-	builder.WriteString(fmt.Sprintf("[%s...%s](%s)", baseRef, tagName, compareURL))
+	fmt.Fprintf(&builder, "[%s...%s](%s)", baseRef, tagName, compareURL)
 	builder.WriteByte('\n')
 	return builder.String()
 }

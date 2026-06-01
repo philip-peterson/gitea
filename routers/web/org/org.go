@@ -8,15 +8,15 @@ import (
 	"errors"
 	"net/http"
 
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/models/organization"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/templates"
-	"code.gitea.io/gitea/modules/web"
-	"code.gitea.io/gitea/services/context"
-	"code.gitea.io/gitea/services/forms"
+	"gitea.dev/models/db"
+	"gitea.dev/models/organization"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/templates"
+	"gitea.dev/modules/web"
+	"gitea.dev/services/context"
+	"gitea.dev/services/forms"
 )
 
 const (
@@ -65,13 +65,13 @@ func CreatePost(ctx *context.Context) {
 		ctx.Data["Err_OrgName"] = true
 		switch {
 		case user_model.IsErrUserAlreadyExist(err):
-			ctx.RenderWithErr(ctx.Tr("form.org_name_been_taken"), tplCreateOrg, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("form.org_name_been_taken"), tplCreateOrg, &form)
 		case db.IsErrNameReserved(err):
-			ctx.RenderWithErr(ctx.Tr("org.form.name_reserved", err.(db.ErrNameReserved).Name), tplCreateOrg, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("org.form.name_reserved", err.(db.ErrNameReserved).Name), tplCreateOrg, &form)
 		case db.IsErrNamePatternNotAllowed(err):
-			ctx.RenderWithErr(ctx.Tr("org.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tplCreateOrg, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("org.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tplCreateOrg, &form)
 		case organization.IsErrUserNotAllowedCreateOrg(err):
-			ctx.RenderWithErr(ctx.Tr("org.form.create_org_not_allowed"), tplCreateOrg, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("org.form.create_org_not_allowed"), tplCreateOrg, &form)
 		default:
 			ctx.ServerError("CreateOrganization", err)
 		}

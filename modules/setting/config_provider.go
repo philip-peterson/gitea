@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/util"
 
 	"gopkg.in/ini.v1" //nolint:depguard // wrapper for this package
 )
@@ -346,23 +346,6 @@ func deprecatedSettingDB(rootCfg ConfigProvider, oldSection, oldKey string) {
 	if rootCfg.Section(oldSection).HasKey(oldKey) {
 		LogStartupProblem(1, log.ERROR, "Deprecation: config option `[%s].%s` present but it won't take effect because it has been moved to admin panel -> config setting", oldSection, oldKey)
 	}
-}
-
-// NewConfigProviderForLocale loads locale configuration from source and others. "string" if for a local file path, "[]byte" is for INI content
-func NewConfigProviderForLocale(source any, others ...any) (ConfigProvider, error) {
-	iniFile, err := ini.LoadSources(ini.LoadOptions{
-		IgnoreInlineComment:         true,
-		UnescapeValueCommentSymbols: true,
-		IgnoreContinuation:          true,
-	}, source, others...)
-	if err != nil {
-		return nil, fmt.Errorf("unable to load locale ini: %w", err)
-	}
-	iniFile.BlockMode = false
-	return &iniConfigProvider{
-		ini:             iniFile,
-		loadedFromEmpty: true,
-	}, nil
 }
 
 func init() {

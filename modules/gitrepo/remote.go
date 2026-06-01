@@ -6,14 +6,12 @@ package gitrepo
 import (
 	"context"
 	"errors"
-	"io"
-	"time"
 
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	giturl "code.gitea.io/gitea/modules/git/url"
-	"code.gitea.io/gitea/modules/globallock"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	giturl "gitea.dev/modules/git/url"
+	"gitea.dev/modules/globallock"
+	"gitea.dev/modules/util"
 )
 
 type RemoteOption string
@@ -36,7 +34,7 @@ func GitRemoteAdd(ctx context.Context, repo Repository, remoteName, remoteURL st
 				return errors.New("unknown remote option: " + string(options[0]))
 			}
 		}
-		_, err := RunCmdString(ctx, repo, cmd.AddDynamicArguments(remoteName, remoteURL))
+		_, _, err := RunCmdString(ctx, repo, cmd.AddDynamicArguments(remoteName, remoteURL))
 		return err
 	})
 }
@@ -44,7 +42,7 @@ func GitRemoteAdd(ctx context.Context, repo Repository, remoteName, remoteURL st
 func GitRemoteRemove(ctx context.Context, repo Repository, remoteName string) error {
 	return globallock.LockAndDo(ctx, getRepoConfigLockKey(repo.RelativePath()), func(ctx context.Context) error {
 		cmd := gitcmd.NewCommand("remote", "rm").AddDynamicArguments(remoteName)
-		_, err := RunCmdString(ctx, repo, cmd)
+		_, _, err := RunCmdString(ctx, repo, cmd)
 		return err
 	})
 }
@@ -59,22 +57,4 @@ func GitRemoteGetURL(ctx context.Context, repo Repository, remoteName string) (*
 		return nil, util.NewNotExistErrorf("remote '%s' does not exist", remoteName)
 	}
 	return giturl.ParseGitURL(addr)
-}
-
-// GitRemotePrune prunes the remote branches that no longer exist in the remote repository.
-func GitRemotePrune(ctx context.Context, repo Repository, remoteName string, timeout time.Duration, stdout, stderr io.Writer) error {
-	return RunCmd(ctx, repo, gitcmd.NewCommand("remote", "prune").
-		AddDynamicArguments(remoteName).
-		WithTimeout(timeout).
-		WithStdout(stdout).
-		WithStderr(stderr))
-}
-
-// GitRemoteUpdatePrune updates the remote branches and prunes the ones that no longer exist in the remote repository.
-func GitRemoteUpdatePrune(ctx context.Context, repo Repository, remoteName string, timeout time.Duration, stdout, stderr io.Writer) error {
-	return RunCmd(ctx, repo, gitcmd.NewCommand("remote", "update", "--prune").
-		AddDynamicArguments(remoteName).
-		WithTimeout(timeout).
-		WithStdout(stdout).
-		WithStderr(stderr))
 }

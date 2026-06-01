@@ -9,13 +9,13 @@ import (
 	"net/url"
 	"strings"
 
-	user_model "code.gitea.io/gitea/models/user"
-	webhook_model "code.gitea.io/gitea/models/webhook"
-	"code.gitea.io/gitea/modules/base"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	webhook_module "code.gitea.io/gitea/modules/webhook"
+	user_model "gitea.dev/models/user"
+	webhook_model "gitea.dev/models/webhook"
+	"gitea.dev/modules/base"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	"gitea.dev/modules/util"
+	webhook_module "gitea.dev/modules/webhook"
 )
 
 type linkFormatter = func(string, string) string
@@ -317,7 +317,7 @@ func getStatusPayloadInfo(p *api.CommitStatusPayload, linkFormatter linkFormatte
 	text = fmt.Sprintf("Commit Status changed: %s - %s", refLink, p.Description)
 	color = greenColor
 	if withSender {
-		if user_model.IsGiteaActionsUserName(p.Sender.UserName) {
+		if user_model.GetSystemUserByName(p.Sender.UserName) != nil {
 			text += " by " + p.Sender.FullName
 		} else {
 			text += " by " + linkFormatter(setting.AppURL+url.PathEscape(p.Sender.UserName), p.Sender.UserName)
@@ -411,6 +411,7 @@ func ToHook(repoLink string, w *webhook_model.Webhook) (*api.Hook, error) {
 
 	return &api.Hook{
 		ID:                  w.ID,
+		Name:                w.Name,
 		Type:                w.Type,
 		URL:                 fmt.Sprintf("%s/settings/hooks/%d", repoLink, w.ID),
 		Active:              w.IsActive,

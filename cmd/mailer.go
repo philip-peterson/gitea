@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"code.gitea.io/gitea/modules/private"
-	"code.gitea.io/gitea/modules/setting"
+	"gitea.dev/modules/private"
+	"gitea.dev/modules/setting"
 
 	"github.com/urfave/cli/v3"
 )
@@ -17,10 +17,10 @@ func runSendMail(ctx context.Context, c *cli.Command) error {
 	setting.MustInstalled()
 
 	subject := c.String("title")
-	confirmSkiped := c.Bool("force")
+	confirmSkipped := c.Bool("force")
 	body := c.String("content")
 
-	if !confirmSkiped {
+	if !confirmSkipped {
 		if len(body) == 0 {
 			fmt.Print("warning: Content is empty")
 		}

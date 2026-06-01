@@ -9,21 +9,21 @@ import (
 	"fmt"
 	"strings"
 
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/container"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/graceful"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/storage"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
-	notify_service "code.gitea.io/gitea/services/notify"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/container"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/graceful"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/repository"
+	"gitea.dev/modules/storage"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
+	notify_service "gitea.dev/services/notify"
 )
 
 // ErrInvalidTagName represents a "InvalidTagName" kind of error.
@@ -371,7 +371,7 @@ func DeleteReleaseByID(ctx context.Context, repo *repo_model.Repository, rel *re
 			}
 		}
 
-		if stdout, err := gitrepo.RunCmdString(ctx, repo,
+		if stdout, _, err := gitrepo.RunCmdString(ctx, repo,
 			gitcmd.NewCommand("tag", "-d").AddDashesAndList(rel.TagName),
 		); err != nil && !strings.Contains(err.Error(), "not found") {
 			log.Error("DeleteReleaseByID (git tag -d): %d in %v Failed:\nStdout: %s\nError: %v", rel.ID, repo, stdout, err)

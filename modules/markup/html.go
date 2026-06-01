@@ -6,13 +6,16 @@ package markup
 import (
 	"bytes"
 	"fmt"
+	"html/template"
 	"io"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
 
-	"code.gitea.io/gitea/modules/markup/common"
+	"gitea.dev/modules/htmlutil"
+	"gitea.dev/modules/markup/common"
+	"gitea.dev/modules/translation"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -60,7 +63,7 @@ var globalVars = sync.OnceValue(func() *globalVarsType {
 	v.shortLinkPattern = regexp.MustCompile(`\[\[(.*?)\]\](\w*)`)
 
 	// anyHashPattern splits url containing SHA into parts
-	v.anyHashPattern = regexp.MustCompile(`https?://(?:\S+/){4,5}([0-9a-f]{40,64})(/[-+~%./\w]+)?(\?[-+~%.\w&=]+)?(#[-+~%.\w]+)?`)
+	v.anyHashPattern = regexp.MustCompile(`https?://(?:\S+/){4,5}([0-9a-f]{40,64})((\.\w+)*)(/[-+~%./\w]+)?(\?[-+~%.\w&=]+)?(#[-+~%.\w]+)?`)
 
 	// comparePattern matches "http://domain/org/repo/compare/COMMIT1...COMMIT2#hash"
 	v.comparePattern = regexp.MustCompile(`https?://(?:\S+/){4,5}([0-9a-f]{7,64})(\.\.\.?)([0-9a-f]{7,64})?(#[-+~_%.a-zA-Z0-9]+)?`)
@@ -147,9 +150,9 @@ func PostProcessDefault(ctx *RenderContext, input io.Reader, output io.Writer) e
 	return postProcess(ctx, procs, input, output)
 }
 
-// PostProcessCommitMessage will use the same logic as PostProcess, but will disable
-// the shortLinkProcessor.
-func PostProcessCommitMessage(ctx *RenderContext, content string) (string, error) {
+// PostProcessCommitMessage will use the same logic as PostProcess, but will disable the shortLinkProcessor.
+// FIXME: this function and its family have a very strange design: it takes HTML as input and output, processes the "escaped" content.
+func PostProcessCommitMessage(ctx *RenderContext, content template.HTML) (template.HTML, error) {
 	procs := []processor{
 		fullIssuePatternProcessor,
 		comparePatternProcessor,
@@ -163,7 +166,8 @@ func PostProcessCommitMessage(ctx *RenderContext, content string) (string, error
 		emojiProcessor,
 		emojiShortCodeProcessor,
 	}
-	return postProcessString(ctx, procs, content)
+	s, err := postProcessString(ctx, procs, string(content))
+	return template.HTML(s), err
 }
 
 var emojiProcessors = []processor{
@@ -171,22 +175,40 @@ var emojiProcessors = []processor{
 	emojiProcessor,
 }
 
+// isBareURLSubject reports whether the (HTML-escaped) commit subject content
+// is entirely a single URL, ignoring leading/trailing whitespace.
+func isBareURLSubject(content string) bool {
+	s := strings.TrimSpace(html.UnescapeString(content))
+	if s == "" {
+		return false
+	}
+	m := common.GlobalVars().LinkRegex.FindStringIndex(s)
+	return m != nil && m[0] == 0 && m[1] == len(s)
+}
+
 // PostProcessCommitMessageSubject will use the same logic as PostProcess and
 // PostProcessCommitMessage, but will disable the shortLinkProcessor and
-// emailAddressProcessor, will add a defaultLinkProcessor if defaultLink is set,
-// which changes every text node into a link to the passed default link.
+// emailAddressProcessor, and wraps the whole subject in defaultLink.
 func PostProcessCommitMessageSubject(ctx *RenderContext, defaultLink, content string) (string, error) {
 	procs := []processor{
 		fullIssuePatternProcessor,
 		comparePatternProcessor,
 		fullHashPatternProcessor,
-		linkProcessor,
 		mentionProcessor,
 		issueIndexPatternProcessor,
 		commitCrossReferencePatternProcessor,
 		hashCurrentPatternProcessor,
 		emojiShortCodeProcessor,
 		emojiProcessor,
+	}
+	// When the whole subject is a bare URL, linkProcessor would turn it into
+	// a competing anchor and hijack the surrounding defaultLink wrapper, leaving
+	// the subject visually unclickable. Match GitHub: render such subjects as
+	// plain text inside defaultLink. Partial URLs inside larger text still become
+	// their own links (nested anchors aren't legal HTML, so the outer defaultLink
+	// naturally breaks on that span, same as on GitHub).
+	if !isBareURLSubject(content) {
+		procs = append(procs, linkProcessor)
 	}
 	procs = append(procs, func(ctx *RenderContext, node *html.Node) {
 		ch := &html.Node{Parent: node, Type: html.TextNode, Data: node.Data}
@@ -232,6 +254,49 @@ func postProcessString(ctx *RenderContext, procs []processor, content string) (s
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+func RenderTocHeadingItems(ctx *RenderContext, nodeDetailsAttrs map[string]string, out io.Writer) {
+	locale, ok := ctx.Value(translation.ContextKey).(translation.Locale)
+	if !ok {
+		locale = translation.NewLocale("")
+	}
+	_, _ = htmlutil.HTMLPrintTag(out, "details", nodeDetailsAttrs)
+	_, _ = htmlutil.HTMLPrintf(out, "<summary>%s</summary>\n", locale.TrString("toc"))
+
+	baseLevel := 6
+	for _, header := range ctx.TocHeadingItems {
+		if header.HeadingLevel < baseLevel {
+			baseLevel = header.HeadingLevel
+		}
+	}
+
+	currentLevel := baseLevel
+	indent := []byte{' ', ' '}
+	_, _ = htmlutil.HTMLPrint(out, "<ul>\n")
+	for _, header := range ctx.TocHeadingItems {
+		for currentLevel < header.HeadingLevel {
+			_, _ = out.Write(indent)
+			_, _ = htmlutil.HTMLPrint(out, "<ul>\n")
+			indent = append(indent, ' ', ' ')
+			currentLevel++
+		}
+		for currentLevel > header.HeadingLevel {
+			indent = indent[:len(indent)-2]
+			_, _ = out.Write(indent)
+			_, _ = htmlutil.HTMLPrint(out, "</ul>\n")
+			currentLevel--
+		}
+		_, _ = out.Write(indent)
+		_, _ = htmlutil.HTMLPrintf(out, "<li><a href=\"#%s\">%s</a></li>\n", header.AnchorID, header.InnerText)
+	}
+	for currentLevel > baseLevel {
+		indent = indent[:len(indent)-2]
+		_, _ = out.Write(indent)
+		_, _ = htmlutil.HTMLPrint(out, "</ul>\n")
+		currentLevel--
+	}
+	_, _ = htmlutil.HTMLPrint(out, "</ul>\n</details>\n")
 }
 
 func postProcess(ctx *RenderContext, procs []processor, input io.Reader, output io.Writer) error {
@@ -284,6 +349,9 @@ func postProcess(ctx *RenderContext, procs []processor, input io.Reader, output 
 	}
 
 	// Render everything to buf.
+	if ctx.TocShowInSection == TocShowInMain && len(ctx.TocHeadingItems) > 0 {
+		RenderTocHeadingItems(ctx, nil, output)
+	}
 	for _, node := range newNodes {
 		if err := html.Render(output, node); err != nil {
 			return fmt.Errorf("markup.postProcess: html.Render: %w", err)
@@ -314,7 +382,7 @@ func visitNode(ctx *RenderContext, procs []processor, node *html.Node) *html.Nod
 		return node.NextSibling
 	}
 
-	processNodeAttrID(node)
+	processNodeHeadingAndID(ctx, node)
 	processFootnoteNode(ctx, node) // FIXME: the footnote processing should be done in the "footnote.go" renderer directly
 
 	if isEmojiNode(node) {

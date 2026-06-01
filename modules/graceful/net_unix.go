@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/util"
 )
 
 const (
@@ -290,11 +290,11 @@ func getActiveListenersToUnlink() []bool {
 func getNotifySocket() (*net.UnixConn, error) {
 	if err := getProvidedFDs(); err != nil {
 		// This error will be logged elsewhere
-		return nil, nil
+		return nil, nil //nolint:nilnil // return nil when no provided FDs are available
 	}
 
 	if notifySocketAddr == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // return nil when notify socket is not configured
 	}
 
 	socketAddr := &net.UnixAddr{

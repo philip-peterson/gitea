@@ -8,25 +8,25 @@ import (
 	"fmt"
 	"net/http"
 
-	git_model "code.gitea.io/gitea/models/git"
-	issues_model "code.gitea.io/gitea/models/issues"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	repo_model "code.gitea.io/gitea/models/repo"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/cache"
-	"code.gitea.io/gitea/modules/cachegroup"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/private"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
-	"code.gitea.io/gitea/modules/web"
-	gitea_context "code.gitea.io/gitea/services/context"
-	pull_service "code.gitea.io/gitea/services/pull"
-	repo_service "code.gitea.io/gitea/services/repository"
+	git_model "gitea.dev/models/git"
+	issues_model "gitea.dev/models/issues"
+	access_model "gitea.dev/models/perm/access"
+	repo_model "gitea.dev/models/repo"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/cache"
+	"gitea.dev/modules/cachegroup"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/private"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
+	"gitea.dev/modules/web"
+	gitea_context "gitea.dev/services/context"
+	pull_service "gitea.dev/services/pull"
+	repo_service "gitea.dev/services/repository"
 )
 
 // HookPostReceive updates services and users
@@ -106,10 +106,10 @@ func HookPostReceive(ctx *gitea_context.PrivateContext) {
 			}
 
 			if update.IsDelRef() {
-				if err := git_model.AddDeletedBranch(ctx, repo.ID, update.RefFullName.BranchName(), update.PusherID); err != nil {
-					log.Error("Failed to add deleted branch: %s/%s Error: %v", ownerName, repoName, err)
+				if err := git_model.MarkBranchAsDeleted(ctx, repo.ID, update.RefFullName.BranchName(), update.PusherID); err != nil {
+					log.Error("Failed to mark branch as deleted: %s/%s Error: %v", ownerName, repoName, err)
 					ctx.JSON(http.StatusInternalServerError, private.HookPostReceiveResult{
-						Err: fmt.Sprintf("Failed to add deleted branch: %s/%s Error: %v", ownerName, repoName, err),
+						Err: fmt.Sprintf("Failed to mark branch as deleted: %s/%s Error: %v", ownerName, repoName, err),
 					})
 					return
 				}
@@ -192,7 +192,7 @@ func HookPostReceive(ctx *gitea_context.PrivateContext) {
 			})
 			return
 		}
-		perm, err := access_model.GetUserRepoPermission(ctx, repo, pusher)
+		perm, err := access_model.GetDoerRepoPermission(ctx, repo, pusher)
 		if err != nil {
 			log.Error("Failed to Update: %s/%s Error: %v", ownerName, repoName, err)
 			ctx.JSON(http.StatusInternalServerError, private.HookPostReceiveResult{

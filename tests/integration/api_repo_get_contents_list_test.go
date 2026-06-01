@@ -10,15 +10,14 @@ import (
 	"testing"
 	"time"
 
-	auth_model "code.gitea.io/gitea/models/auth"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/gitrepo"
-	"code.gitea.io/gitea/modules/setting"
-	api "code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/util"
-	repo_service "code.gitea.io/gitea/services/repository"
+	auth_model "gitea.dev/models/auth"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/gitrepo"
+	"gitea.dev/modules/setting"
+	api "gitea.dev/modules/structs"
+	repo_service "gitea.dev/services/repository"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -35,9 +34,9 @@ func getExpectedContentsListResponseForContents(ref, refType, lastCommitSHA stri
 			Name:              path.Base(treePath),
 			Path:              treePath,
 			SHA:               sha,
-			LastCommitSHA:     util.ToPointer(lastCommitSHA),
-			LastCommitterDate: util.ToPointer(time.Date(2017, time.March, 19, 16, 47, 59, 0, time.FixedZone("", -14400))),
-			LastAuthorDate:    util.ToPointer(time.Date(2017, time.March, 19, 16, 47, 59, 0, time.FixedZone("", -14400))),
+			LastCommitSHA:     new(lastCommitSHA),
+			LastCommitterDate: new(time.Date(2017, time.March, 19, 16, 47, 59, 0, time.FixedZone("", -14400))),
+			LastAuthorDate:    new(time.Date(2017, time.March, 19, 16, 47, 59, 0, time.FixedZone("", -14400))),
 			Type:              "file",
 			Size:              30,
 			URL:               &selfURL,
@@ -95,8 +94,7 @@ func testAPIGetContentsList(t *testing.T, u *url.URL) {
 	refType := "branch"
 	req := NewRequestf(t, "GET", "/api/v1/repos/%s/%s/contents?ref=%s", user2.Name, repo1.Name, ref)
 	resp := MakeRequest(t, req, http.StatusOK)
-	var contentsListResponse []*api.ContentsResponse
-	DecodeJSON(t, resp, &contentsListResponse)
+	contentsListResponse := DecodeJSON(t, resp, []*api.ContentsResponse{})
 	assert.NotNil(t, contentsListResponse)
 	lastCommit, err := gitRepo.GetCommitByPath("README.md")
 	assert.NoError(t, err)
@@ -107,7 +105,7 @@ func testAPIGetContentsList(t *testing.T, u *url.URL) {
 	refType = "branch"
 	req = NewRequestf(t, "GET", "/api/v1/repos/%s/%s/contents/", user2.Name, repo1.Name)
 	resp = MakeRequest(t, req, http.StatusOK)
-	DecodeJSON(t, resp, &contentsListResponse)
+	contentsListResponse = DecodeJSON(t, resp, []*api.ContentsResponse{})
 	assert.NotNil(t, contentsListResponse)
 
 	expectedContentsListResponse = getExpectedContentsListResponseForContents(repo1.DefaultBranch, refType, lastCommit.ID.String())
@@ -118,7 +116,7 @@ func testAPIGetContentsList(t *testing.T, u *url.URL) {
 	refType = "branch"
 	req = NewRequestf(t, "GET", "/api/v1/repos/%s/%s/contents?ref=%s", user2.Name, repo1.Name, ref)
 	resp = MakeRequest(t, req, http.StatusOK)
-	DecodeJSON(t, resp, &contentsListResponse)
+	contentsListResponse = DecodeJSON(t, resp, []*api.ContentsResponse{})
 	assert.NotNil(t, contentsListResponse)
 	branchCommit, err := gitRepo.GetBranchCommit(ref)
 	assert.NoError(t, err)
@@ -132,7 +130,7 @@ func testAPIGetContentsList(t *testing.T, u *url.URL) {
 	refType = "tag"
 	req = NewRequestf(t, "GET", "/api/v1/repos/%s/%s/contents/?ref=%s", user2.Name, repo1.Name, ref)
 	resp = MakeRequest(t, req, http.StatusOK)
-	DecodeJSON(t, resp, &contentsListResponse)
+	contentsListResponse = DecodeJSON(t, resp, []*api.ContentsResponse{})
 	assert.NotNil(t, contentsListResponse)
 	tagCommit, err := gitRepo.GetTagCommit(ref)
 	assert.NoError(t, err)
@@ -146,7 +144,7 @@ func testAPIGetContentsList(t *testing.T, u *url.URL) {
 	refType = "commit"
 	req = NewRequestf(t, "GET", "/api/v1/repos/%s/%s/contents/?ref=%s", user2.Name, repo1.Name, ref)
 	resp = MakeRequest(t, req, http.StatusOK)
-	DecodeJSON(t, resp, &contentsListResponse)
+	contentsListResponse = DecodeJSON(t, resp, []*api.ContentsResponse{})
 	assert.NotNil(t, contentsListResponse)
 	expectedContentsListResponse = getExpectedContentsListResponseForContents(ref, refType, commitID)
 	assert.Equal(t, expectedContentsListResponse, contentsListResponse)

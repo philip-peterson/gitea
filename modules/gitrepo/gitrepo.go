@@ -11,11 +11,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/reqctx"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/reqctx"
+	"gitea.dev/modules/setting"
+	"gitea.dev/modules/util"
 )
 
 // Repository represents a git repository which stored in a disk
@@ -80,7 +80,12 @@ func DeleteRepository(ctx context.Context, repo Repository) error {
 
 // RenameRepository renames a repository's name on disk
 func RenameRepository(ctx context.Context, repo, newRepo Repository) error {
-	if err := util.Rename(repoPath(repo), repoPath(newRepo)); err != nil {
+	dstDir := repoPath(newRepo)
+	if err := os.MkdirAll(filepath.Dir(dstDir), os.ModePerm); err != nil {
+		return fmt.Errorf("Failed to create dir %s: %w", filepath.Dir(dstDir), err)
+	}
+
+	if err := util.Rename(repoPath(repo), dstDir); err != nil {
 		return fmt.Errorf("rename repository directory: %w", err)
 	}
 	return nil
@@ -116,5 +121,8 @@ func RemoveRepoFileOrDir(ctx context.Context, repo Repository, relativeFileOrDir
 
 func CreateRepoFile(ctx context.Context, repo Repository, relativeFilePath string) (io.WriteCloser, error) {
 	absoluteFilePath := filepath.Join(repoPath(repo), relativeFilePath)
+	if err := os.MkdirAll(filepath.Dir(absoluteFilePath), os.ModePerm); err != nil {
+		return nil, err
+	}
 	return os.Create(absoluteFilePath)
 }

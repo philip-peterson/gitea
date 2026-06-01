@@ -15,42 +15,43 @@ import (
 	"strings"
 	"unicode"
 
-	asymkey_model "code.gitea.io/gitea/models/asymkey"
-	git_model "code.gitea.io/gitea/models/git"
-	"code.gitea.io/gitea/models/perm"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/git/gitcmd"
-	"code.gitea.io/gitea/modules/json"
-	"code.gitea.io/gitea/modules/lfstransfer"
-	"code.gitea.io/gitea/modules/log"
-	"code.gitea.io/gitea/modules/pprof"
-	"code.gitea.io/gitea/modules/private"
-	"code.gitea.io/gitea/modules/process"
-	repo_module "code.gitea.io/gitea/modules/repository"
-	"code.gitea.io/gitea/modules/setting"
-	"code.gitea.io/gitea/services/lfs"
+	asymkey_model "gitea.dev/models/asymkey"
+	git_model "gitea.dev/models/git"
+	"gitea.dev/models/perm"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/modules/git"
+	"gitea.dev/modules/git/gitcmd"
+	"gitea.dev/modules/json"
+	"gitea.dev/modules/lfstransfer"
+	"gitea.dev/modules/log"
+	"gitea.dev/modules/pprof"
+	"gitea.dev/modules/private"
+	"gitea.dev/modules/process"
+	repo_module "gitea.dev/modules/repository"
+	"gitea.dev/modules/setting"
+	"gitea.dev/services/lfs"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/urfave/cli/v3"
 )
 
-// CmdServ represents the available serv sub-command.
-var CmdServ = &cli.Command{
-	Name:        "serv",
-	Usage:       "(internal) Should only be called by SSH shell",
-	Description: "Serv provides access auth for repositories",
-	Hidden:      true, // Internal commands shouldn't be visible in help
-	Before:      PrepareConsoleLoggerLevel(log.FATAL),
-	Action:      runServ,
-	Flags: []cli.Flag{
-		&cli.BoolFlag{
-			Name: "enable-pprof",
+func newServCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "serv",
+		Usage:       "(internal) Should only be called by SSH shell",
+		Description: "Serv provides access auth for repositories",
+		Hidden:      true, // Internal commands shouldn't be visible in help
+		Before:      PrepareConsoleLoggerLevel(log.FATAL),
+		Action:      runServ,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name: "enable-pprof",
+			},
+			&cli.BoolFlag{
+				Name: "debug",
+			},
 		},
-		&cli.BoolFlag{
-			Name: "debug",
-		},
-	},
+	}
 }
 
 func setup(ctx context.Context, debug bool) {

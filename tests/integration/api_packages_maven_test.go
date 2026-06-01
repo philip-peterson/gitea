@@ -12,12 +12,12 @@ import (
 	"sync"
 	"testing"
 
-	"code.gitea.io/gitea/models/packages"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/packages/maven"
-	"code.gitea.io/gitea/modules/test"
-	"code.gitea.io/gitea/tests"
+	"gitea.dev/models/packages"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/packages/maven"
+	"gitea.dev/modules/test"
+	"gitea.dev/tests"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,7 +160,7 @@ func TestPackageMaven(t *testing.T) {
 	t.Run("UploadVerifySHA1", func(t *testing.T) {
 		defer tests.PrintCurrentTest(t)()
 
-		t.Run("Missmatch", func(t *testing.T) {
+		t.Run("Mismatch", func(t *testing.T) {
 			defer tests.PrintCurrentTest(t)()
 
 			putFile(t, fmt.Sprintf("/%s/%s.sha1", packageVersion, filename), "test", http.StatusBadRequest)
@@ -321,11 +321,9 @@ func TestPackageMavenConcurrent(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for i := range 10 {
-			wg.Add(1)
-			go func(i int) {
+			wg.Go(func() {
 				putFile(t, fmt.Sprintf("/%s/%s.jar", packageVersion, strconv.Itoa(i)), "test", http.StatusCreated)
-				wg.Done()
-			}(i)
+			})
 		}
 		wg.Wait()
 	})

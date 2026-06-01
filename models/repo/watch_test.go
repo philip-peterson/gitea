@@ -6,13 +6,14 @@ package repo_test
 import (
 	"testing"
 
-	"code.gitea.io/gitea/models/db"
-	repo_model "code.gitea.io/gitea/models/repo"
-	"code.gitea.io/gitea/models/unittest"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/setting"
+	"gitea.dev/models/db"
+	repo_model "gitea.dev/models/repo"
+	"gitea.dev/models/unittest"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/setting"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsWatching(t *testing.T) {
@@ -118,4 +119,22 @@ func TestWatchIfAuto(t *testing.T) {
 	watchers, err = repo_model.GetRepoWatchers(t.Context(), repo.ID, db.ListOptions{Page: 1})
 	assert.NoError(t, err)
 	assert.Len(t, watchers, prevCount)
+}
+
+func TestClearRepoWatches(t *testing.T) {
+	assert.NoError(t, unittest.PrepareTestDatabase())
+
+	const repoID int64 = 1
+	watchers, err := repo_model.GetRepoWatchersIDs(t.Context(), repoID)
+	require.NoError(t, err)
+	require.NotEmpty(t, watchers)
+
+	assert.NoError(t, repo_model.ClearRepoWatches(t.Context(), repoID))
+
+	watchers, err = repo_model.GetRepoWatchersIDs(t.Context(), repoID)
+	assert.NoError(t, err)
+	assert.Empty(t, watchers)
+
+	repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{ID: repoID})
+	assert.Zero(t, repo.NumWatches)
 }

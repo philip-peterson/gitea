@@ -7,10 +7,10 @@ import (
 	"context"
 	"time"
 
-	"code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/log"
+	"gitea.dev/models/auth"
+	"gitea.dev/models/db"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/log"
 
 	"github.com/markbates/goth"
 	"golang.org/x/oauth2"
@@ -67,7 +67,7 @@ func (source *Source) refresh(ctx context.Context, provider goth.Provider, u *us
 		LoginSource: u.LoginSourceID,
 	}
 
-	hasUser, err := user_model.GetUser(ctx, user)
+	hasUser, err := user_model.GetIndividualUser(ctx, user)
 	if err != nil {
 		return err
 	}

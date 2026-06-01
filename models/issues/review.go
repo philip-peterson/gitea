@@ -10,16 +10,16 @@ import (
 	"slices"
 	"strings"
 
-	"code.gitea.io/gitea/models/db"
-	git_model "code.gitea.io/gitea/models/git"
-	"code.gitea.io/gitea/models/organization"
-	"code.gitea.io/gitea/models/perm"
-	access_model "code.gitea.io/gitea/models/perm/access"
-	"code.gitea.io/gitea/models/unit"
-	user_model "code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/structs"
-	"code.gitea.io/gitea/modules/timeutil"
-	"code.gitea.io/gitea/modules/util"
+	"gitea.dev/models/db"
+	git_model "gitea.dev/models/git"
+	"gitea.dev/models/organization"
+	"gitea.dev/models/perm"
+	access_model "gitea.dev/models/perm/access"
+	"gitea.dev/models/unit"
+	user_model "gitea.dev/models/user"
+	"gitea.dev/modules/structs"
+	"gitea.dev/modules/timeutil"
+	"gitea.dev/modules/util"
 
 	"xorm.io/builder"
 )
@@ -67,7 +67,7 @@ func (err ErrNotValidReviewRequest) Unwrap() error {
 	return util.ErrInvalidArgument
 }
 
-// ErrReviewRequestOnClosedPR represents an error when an user tries to request a re-review on a closed or merged PR.
+// ErrReviewRequestOnClosedPR represents an error when a user tries to request a re-review on a closed or merged PR.
 type ErrReviewRequestOnClosedPR struct{}
 
 // IsErrReviewRequestOnClosedPR checks if an error is an ErrReviewRequestOnClosedPR.
@@ -176,15 +176,7 @@ func (r *Review) LoadReviewer(ctx context.Context) (err error) {
 	if r.ReviewerID == 0 || r.Reviewer != nil {
 		return err
 	}
-	r.Reviewer, err = user_model.GetPossibleUserByID(ctx, r.ReviewerID)
-	if err != nil {
-		if !user_model.IsErrUserNotExist(err) {
-			return fmt.Errorf("GetPossibleUserByID [%d]: %w", r.ReviewerID, err)
-		}
-		r.ReviewerID = user_model.GhostUserID
-		r.Reviewer = user_model.NewGhostUser()
-		return nil
-	}
+	r.ReviewerID, r.Reviewer, err = user_model.GetPossibleUserByID(ctx, r.ReviewerID)
 	return err
 }
 
@@ -215,25 +207,25 @@ func (r *Review) LoadAttributes(ctx context.Context) (err error) {
 	return err
 }
 
-// HTMLTypeColorName returns the color used in the ui indicating the review
-func (r *Review) HTMLTypeColorName() string {
+// HTMLTypeColorClass returns the CSS class used in the ui indicating the review
+func (r *Review) HTMLTypeColorClass() string {
 	switch r.Type {
 	case ReviewTypeApprove:
 		if !r.Official {
-			return "grey"
+			return "tw-text-text-light"
 		}
 		if r.Stale {
-			return "yellow"
+			return "tw-text-yellow"
 		}
-		return "green"
+		return "tw-text-green"
 	case ReviewTypeComment:
-		return "grey"
+		return "tw-text-text-light"
 	case ReviewTypeReject:
-		return "red"
+		return "tw-text-red"
 	case ReviewTypeRequest:
-		return "yellow"
+		return "tw-text-yellow"
 	}
-	return "grey"
+	return "tw-text-text-light"
 }
 
 // TooltipContent returns the locale string describing the review type
@@ -384,7 +376,7 @@ func CreateReview(ctx context.Context, opts CreateReviewOptions) (*Review, error
 // GetCurrentReview returns the current pending review of reviewer for given issue
 func GetCurrentReview(ctx context.Context, reviewer *user_model.User, issue *Issue) (*Review, error) {
 	if reviewer == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // return nil when reviewer is nil
 	}
 	reviews, err := FindReviews(ctx, FindReviewOptions{
 		Types:      []ReviewType{ReviewTypePending},
@@ -490,6 +482,14 @@ func SubmitReview(ctx context.Context, doer *user_model.User, issue *Issue, revi
 
 		if _, err := sess.ID(review.ID).Cols("content, type, official, commit_id, stale").Update(review); err != nil {
 			return nil, nil, err
+		}
+
+		// make sure the leftover review request is cleared, consistent with CreateReview
+		if reviewType != ReviewTypePending {
+			if _, err := sess.Where(builder.Eq{"reviewer_id": doer.ID, "issue_id": issue.ID, "type": ReviewTypeRequest}).
+				Delete(new(Review)); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 
@@ -643,7 +643,7 @@ func InsertReviews(ctx context.Context, reviews []*Review) error {
 }
 
 // AddReviewRequest add a review request from one reviewer
-func AddReviewRequest(ctx context.Context, issue *Issue, reviewer, doer *user_model.User) (*Comment, error) {
+func AddReviewRequest(ctx context.Context, issue *Issue, reviewer, doer *user_model.User, isCodeOwners bool) (*Comment, error) {
 	return db.WithTx2(ctx, func(ctx context.Context) (*Comment, error) {
 		sess := db.GetEngine(ctx)
 
@@ -702,6 +702,7 @@ func AddReviewRequest(ctx context.Context, issue *Issue, reviewer, doer *user_mo
 			RemovedAssignee: false,       // Use RemovedAssignee as !isRequest
 			AssigneeID:      reviewer.ID, // Use AssigneeID as reviewer ID
 			ReviewID:        review.ID,
+			SpecialDoerName: util.Iif(isCodeOwners, SpecialDoerNameCodeOwners, ""),
 		})
 		if err != nil {
 			return nil, err
@@ -767,7 +768,7 @@ func restoreLatestOfficialReview(ctx context.Context, issueID, reviewerID int64)
 }
 
 // AddTeamReviewRequest add a review request from one team
-func AddTeamReviewRequest(ctx context.Context, issue *Issue, reviewer *organization.Team, doer *user_model.User) (*Comment, error) {
+func AddTeamReviewRequest(ctx context.Context, issue *Issue, reviewer *organization.Team, doer *user_model.User, isCodeOwners bool) (*Comment, error) {
 	return db.WithTx2(ctx, func(ctx context.Context) (*Comment, error) {
 		review, err := GetTeamReviewerByIssueIDAndTeamID(ctx, issue.ID, reviewer.ID)
 		if err != nil && !IsErrReviewNotExist(err) {
@@ -812,6 +813,7 @@ func AddTeamReviewRequest(ctx context.Context, issue *Issue, reviewer *organizat
 			RemovedAssignee: false,       // Use RemovedAssignee as !isRequest
 			AssigneeTeamID:  reviewer.ID, // Use AssigneeTeamID as reviewer team ID
 			ReviewID:        review.ID,
+			SpecialDoerName: util.Iif(isCodeOwners, SpecialDoerNameCodeOwners, ""),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("CreateComment(): %w", err)
@@ -906,8 +908,8 @@ func MarkConversation(ctx context.Context, comment *Comment, doer *user_model.Us
 // CanMarkConversation  Add or remove Conversation mark for a code comment permission check
 // the PR writer , official reviewer and poster can do it
 func CanMarkConversation(ctx context.Context, issue *Issue, doer *user_model.User) (permResult bool, err error) {
-	if doer == nil || issue == nil {
-		return false, errors.New("issue or doer is nil")
+	if doer == nil {
+		return false, nil
 	}
 
 	if err = issue.LoadRepo(ctx); err != nil {
@@ -917,7 +919,7 @@ func CanMarkConversation(ctx context.Context, issue *Issue, doer *user_model.Use
 		return false, nil
 	}
 	if doer.ID != issue.PosterID {
-		p, err := access_model.GetUserRepoPermission(ctx, issue.Repo, doer)
+		p, err := access_model.GetDoerRepoPermission(ctx, issue.Repo, doer)
 		if err != nil {
 			return false, err
 		}
