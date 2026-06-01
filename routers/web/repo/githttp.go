@@ -5,7 +5,6 @@
 package repo
 
 import (
-	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -74,6 +73,7 @@ func httpBase(ctx *context.Context, optGitService ...string) *serviceHandler {
 	case "git-receive-pack":
 		serviceType = ServiceTypeReceivePack
 		receivePack = true
+		log.Debug("httpBase: detected receive-pack POST for %s", ctx.Req.URL.Path)
 	case "git-upload-pack":
 		serviceType = ServiceTypeUploadPack
 		isPull = true
@@ -500,35 +500,13 @@ func serviceRPC(ctx *context.Context, service string) {
 	// Normal path (no MaxPushBlobSize limit active)
 	stdout := ctx.Resp
 
-	if service == ServiceTypeReceivePack {
-		// Temporary diagnostic: capture what the client actually sends
-		// on this POST (especially useful on the 2nd+ attempt).
-		const peekSize = 8192
-		peek := make([]byte, peekSize)
-		n, _ := io.ReadFull(reqBody, peek)
-		if n > 0 {
-			log.Debug("serviceRPC: receive-pack body start (%d bytes): %q", n, peek[:n])
-		}
-		original := reqBody
-		reqBody = &struct {
-			io.Reader
-			io.Closer
-		}{
-			Reader: io.MultiReader(bytes.NewReader(peek[:n]), original),
-			Closer: original,
-		}
-
-		// Log key headers that affect protocol behavior
-		log.Debug("serviceRPC: receive-pack headers: Content-Length=%s Expect=%s User-Agent=%s",
-			ctx.Req.Header.Get("Content-Length"),
-			ctx.Req.Header.Get("Expect"),
-			ctx.Req.Header.Get("User-Agent"))
-	}
-
 	start := time.Now()
-	log.Debug("serviceRPC: normal receive-pack path, starting command: %s", cmd.LogString())
-	cmdErr := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
-		WithEnv(append(os.Environ(), h.environ...)).
+	log.Debug("serviceRPC: normal path, starting command: %s", cmd.LogString())
+
+	fullEnv := append(os.Environ(), h.environ...)
+	finalCmd := cmd.AddArguments(".")
+	cmdErr := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), finalCmd.
+		WithEnv(fullEnv).
 		WithStdinCopy(reqBody).
 		WithStdoutCopy(stdout),
 	)
@@ -537,12 +515,12 @@ func serviceRPC(ctx *context.Context, service string) {
 	if cmdErr != nil {
 		ctxErr := ctx.Err()
 		if gitcmd.IsErrorCanceledOrKilled(cmdErr) {
-			log.Debug("serviceRPC: receive-pack command canceled/killed after %s (ctxErr=%v): %v", dur, ctxErr, cmdErr)
+			log.Debug("serviceRPC: command canceled/killed after %s (ctxErr=%v): %v", dur, ctxErr, cmdErr)
 		} else {
 			log.Error("Fail to serve RPC(%s) in %s after %s (ctxErr=%v): %v", service, h.getStorageRepo().RelativePath(), dur, ctxErr, cmdErr)
 		}
 	} else {
-		log.Debug("serviceRPC: normal receive-pack command succeeded in %s", dur)
+		log.Debug("serviceRPC: normal command succeeded in %s", dur)
 	}
 }
 

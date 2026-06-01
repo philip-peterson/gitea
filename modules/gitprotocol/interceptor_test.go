@@ -38,7 +38,6 @@ func TestReceivePack_EarlyErrorWritesResponse(t *testing.T) {
 
 	err := ReceivePack(bytes.NewReader(badInput), &response, func(ObjectHeader) error { return nil },
 		func(io.Reader, io.Writer) error { return nil })
-
 	if err != nil {
 		t.Fatalf("expected ReceivePack to return nil after writing error response, got %v", err)
 	}

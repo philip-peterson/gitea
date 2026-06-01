@@ -432,6 +432,10 @@ func (c *Command) Start(ctx context.Context) (retErr error) {
 
 	c.cmdStartTime = time.Now()
 
+	if strings.Contains(c.prog, "receive-pack") {
+		log.Debug("gitcmd: [ACTUAL EXEC ARGV for receive-pack] prog=%s fullArgs=%v", c.prog, append(c.configArgs, c.args...))
+	}
+
 	c.cmd = exec.CommandContext(c.cmdCtx, c.prog, append(c.configArgs, c.args...)...)
 	if c.opts.Env == nil {
 		c.cmd.Env = os.Environ()
