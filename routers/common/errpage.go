@@ -24,6 +24,15 @@ import (
 const tplStatus500 templates.TplName = "status/500"
 
 func renderServerErrorPage(w http.ResponseWriter, req *http.Request, respCode int, tmpl templates.TplName, ctxData map[string]any, plainMsg string) {
+	// Never inject HTML or plain text error bodies into an active git smart HTTP
+	// response stream. Doing so produces "bad line length character" (and other
+	// protocol errors) on the client because the body is a pure pkt-line protocol.
+	// The git handler is solely responsible for the response bytes once it has
+	// set the application/x-git-* Content-Type.
+	if ct := w.Header().Get("Content-Type"); strings.HasPrefix(ct, "application/x-git-") {
+		return
+	}
+
 	acceptsHTML := false
 	for _, part := range req.Header["Accept"] {
 		if strings.Contains(part, "text/html") {

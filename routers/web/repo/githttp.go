@@ -5,6 +5,7 @@
 package repo
 
 import (
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -369,6 +370,14 @@ func prepareGitCmdWithAllowedService(service string, allowedServices []string) *
 }
 
 // byteCountWriter wraps an io.Writer and counts bytes successfully written.
+// It is used on the receive-pack response path so we can detect zero-byte
+// failures and inject a proper error pkt-line afterward.
+//
+// It also implements http.Flusher so that timely Flush calls from git (or the
+// exec copy goroutine) are propagated. Without this, status lines or early
+// error packets can stay buffered in the HTTP chunked writer, causing git
+// clients to see "hung up" or "bad line length" because they don't receive
+// data promptly.
 type byteCountWriter struct {
 	w io.Writer
 	n int64
@@ -380,8 +389,16 @@ func (c *byteCountWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// Flush implements http.Flusher by delegating to the underlying writer when possible.
+func (c *byteCountWriter) Flush() {
+	if f, ok := c.w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func serviceRPC(ctx *context.Context, service string) {
 	defer ctx.Req.Body.Close()
+
 	h := httpBase(ctx, "git-"+service)
 	if h == nil {
 		return
@@ -405,6 +422,11 @@ func serviceRPC(ctx *context.Context, service string) {
 	}
 
 	ctx.Resp.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", service))
+	// Prevent response compression middleware (e.g. gzhttp when EnableGzip is on)
+	// from wrapping the body. The git smart protocol is a raw pkt-line stream;
+	// compressing it produces "bad line length character" errors on clients.
+	ctx.Resp.Header().Set("Content-Encoding", "identity")
+	ctx.Resp.WriteHeader(http.StatusOK)
 
 	reqBody := ctx.Req.Body
 
@@ -435,7 +457,8 @@ func serviceRPC(ctx *context.Context, service string) {
 				WithStdoutCopy(stdout),
 			)
 		}
-		if err := gitprotocol.ReceivePack(reqBody, ctx.Resp,
+		var err error
+		if err = gitprotocol.ReceivePack(reqBody, ctx.Resp,
 			func(hdr gitprotocol.ObjectHeader) error {
 				// Delta objects report the size of the *delta instructions*, not the
 				// final expanded object. When a blob size limit is active we must
@@ -468,36 +491,58 @@ func serviceRPC(ctx *context.Context, service string) {
 				msg = err.Error()
 			}
 			if msg != "" {
-				_ = gitprotocol.WriteReceivePackError(ctx.Resp, "git receive-pack: "+msg, true)
+				_ = gitprotocol.WriteReceivePackError(ctx.Resp, "git receive-pack: "+msg, false)
 			}
 		}
 		return
 	}
 
-	// Wrap stdout for receive-pack so zero-byte failures can get an injected
-	// error response (avoids "unexpected disconnect" for the client).
+	// Normal path (no MaxPushBlobSize limit active)
 	stdout := ctx.Resp
-	var cw *byteCountWriter
+
 	if service == ServiceTypeReceivePack {
-		cw = &byteCountWriter{w: ctx.Resp}
-		stdout = cw
+		// Temporary diagnostic: capture what the client actually sends
+		// on this POST (especially useful on the 2nd+ attempt).
+		const peekSize = 8192
+		peek := make([]byte, peekSize)
+		n, _ := io.ReadFull(reqBody, peek)
+		if n > 0 {
+			log.Debug("serviceRPC: receive-pack body start (%d bytes): %q", n, peek[:n])
+		}
+		original := reqBody
+		reqBody = &struct {
+			io.Reader
+			io.Closer
+		}{
+			Reader: io.MultiReader(bytes.NewReader(peek[:n]), original),
+			Closer: original,
+		}
+
+		// Log key headers that affect protocol behavior
+		log.Debug("serviceRPC: receive-pack headers: Content-Length=%s Expect=%s User-Agent=%s",
+			ctx.Req.Header.Get("Content-Length"),
+			ctx.Req.Header.Get("Expect"),
+			ctx.Req.Header.Get("User-Agent"))
 	}
 
-	if err := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
+	start := time.Now()
+	log.Debug("serviceRPC: normal receive-pack path, starting command: %s", cmd.LogString())
+	cmdErr := gitrepo.RunCmdWithStderr(ctx, h.getStorageRepo(), cmd.AddArguments(".").
 		WithEnv(append(os.Environ(), h.environ...)).
 		WithStdinCopy(reqBody).
 		WithStdoutCopy(stdout),
-	); err != nil {
-		if !gitcmd.IsErrorCanceledOrKilled(err) {
-			log.Error("Fail to serve RPC(%s) in %s: %v", service, h.getStorageRepo().RelativePath(), err)
+	)
+	dur := time.Since(start)
+
+	if cmdErr != nil {
+		ctxErr := ctx.Err()
+		if gitcmd.IsErrorCanceledOrKilled(cmdErr) {
+			log.Debug("serviceRPC: receive-pack command canceled/killed after %s (ctxErr=%v): %v", dur, ctxErr, cmdErr)
+		} else {
+			log.Error("Fail to serve RPC(%s) in %s after %s (ctxErr=%v): %v", service, h.getStorageRepo().RelativePath(), dur, ctxErr, cmdErr)
 		}
-		if service == ServiceTypeReceivePack && cw != nil && cw.n == 0 {
-			msg := err.Error()
-			if rse, ok := err.(gitcmd.RunStdError); ok && rse.Stderr() != "" {
-				msg = rse.Stderr()
-			}
-			_ = gitprotocol.WriteReceivePackError(ctx.Resp, "git receive-pack: "+msg, true)
-		}
+	} else {
+		log.Debug("serviceRPC: normal receive-pack command succeeded in %s", dur)
 	}
 }
 
@@ -566,6 +611,8 @@ func GetInfoRefs(ctx *context.Context) {
 	}
 
 	ctx.Resp.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-advertisement", h.serviceType))
+	// Prevent response compression middleware from corrupting the git advertisement pkt stream.
+	ctx.Resp.Header().Set("Content-Encoding", "identity")
 	ctx.Resp.WriteHeader(http.StatusOK)
 	_, _ = ctx.Resp.Write(packetWrite("# service=git-" + h.serviceType + "\n"))
 	_, _ = ctx.Resp.Write([]byte("0000"))
