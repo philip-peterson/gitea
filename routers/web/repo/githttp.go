@@ -417,9 +417,9 @@ type bodyCounter struct {
 func (b *bodyCounter) Read(p []byte) (int, error) {
 	n, err := b.r.Read(p)
 	b.n += int64(n)
-	if err != nil {
-		log.Debug("bodyCounter[%s]: total=%d finalErr=%v", b.label, b.n, err)
-	}
+	// Log every read so we can see whether bytes trickle in or the stream is
+	// dead from the start. Use Trace to avoid flooding normal debug logs.
+	log.Trace("bodyCounter[%s]: read n=%d total=%d err=%v", b.label, n, b.n, err)
 	return n, err
 }
 
@@ -553,9 +553,10 @@ func serviceRPC(ctx *context.Context, service string) {
 	// the git child on receive-pack. This helps distinguish "client closed while
 	// we were still reading the pack" vs "body fully received, hangup only on status write".
 	if service == ServiceTypeReceivePack {
-		log.Debug("receive-pack POST: ContentLength=%d TransferEncoding=%v Remote=%s",
-			ctx.Req.ContentLength, ctx.Req.TransferEncoding, ctx.Req.RemoteAddr)
-		reqBody = &bodyCounter{r: reqBody, label: "normal-receive-pack"}
+		reqID := fmt.Sprintf("rpc-%d", time.Now().UnixNano())
+		log.Debug("receive-pack POST [%s]: ContentLength=%d TransferEncoding=%v Remote=%s",
+			reqID, ctx.Req.ContentLength, ctx.Req.TransferEncoding, ctx.Req.RemoteAddr)
+		reqBody = &bodyCounter{r: reqBody, label: reqID}
 	}
 
 	start := time.Now()
