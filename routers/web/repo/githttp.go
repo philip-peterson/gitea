@@ -553,6 +553,8 @@ func serviceRPC(ctx *context.Context, service string) {
 	// the git child on receive-pack. This helps distinguish "client closed while
 	// we were still reading the pack" vs "body fully received, hangup only on status write".
 	if service == ServiceTypeReceivePack {
+		log.Debug("receive-pack POST: ContentLength=%d TransferEncoding=%v Remote=%s",
+			ctx.Req.ContentLength, ctx.Req.TransferEncoding, ctx.Req.RemoteAddr)
 		reqBody = &bodyCounter{r: reqBody, label: "normal-receive-pack"}
 	}
 
