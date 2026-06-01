@@ -127,6 +127,22 @@ The fact that the client reaches 100% object writing but then dies while reading
 
 ---
 
-**Status as of last log:** Wrapper removed from normal path. First-POST regression fixed. Large-push sideband disconnect still present. User provided client-side output showing the disconnect happens after successful object transfer.
+**Status as of last log (deeper root cause from Git source):** The two-POST behavior is *intentional* in Git's remote-curl.c (see `probe_rpc` + `post_rpc` around lines 879-956 in the Git tree at ~/Code/git):
 
-Next action owned by user: hook bypass test + more server logs during a repro.
+- In `post_rpc`, the helper first tries to buffer the entire request from send-pack until the first flush pkt.
+- If it doesn't fit in `http_post_buffer` (i.e. any real push with a packfile), `large_request=1`.
+- Then it does a *synchronous probe* `POST` with a hardcoded `CURLOPT_POSTFIELDS "0000"` (Content-Length:4) **solely** to:
+  - Force any auth handshake / 401 re-challenge to happen early.
+  - Possibly negotiate 100-continue (for GSS/negotiate or explicit authtype).
+  - "Prime" the keep-alive connection before libcurl starts the real (chunked, unknown-size) POST via a READFUNCTION callback.
+- The probe response body is completely ignored (simple fwrite_buffer + discard). Git's own receive-pack, when fed exactly "0000" in stateless-rpc mode, takes the fast path in `read_head_info` (first packet_reader_read sees FLUSH → returns NULL commands), skips all work, writes **zero bytes** of status (use_sideband is never set because there was no cap line), and exits 0. Empty body is the expected and correct server response for the probe.
+
+Previous peek code broke the *second* request's chunked body reader for exactly this flow. Removing it was necessary but not sufficient for long-term robustness.
+
+**Additional improvement made:** Added explicit `http.Flusher.Flush()` immediately after `WriteHeader(200)` + the "identity" header in `serviceRPC` (the common RPC result path for both upload-pack and receive-pack, covering both the probe and the real POST). This ensures the 200 + headers are on the wire promptly over keep-alive *before* the client starts pumping the second request body or before a long-running receive-pack blocks. Matches the intent of the existing `byteCountWriter` (which already delegates Flush for the MAX_PUSH_BLOB_SIZE path) and the comments in Git's rpc_state about flush boundaries being request boundaries.
+
+A short comment was left at the flush site (and the previous body-purity comment was tightened) explaining the Git client probe + keep-alive requirement.
+
+This is the correct "something else to do" once the peek was gone: make header delivery timely for the degenerate probe case that Git deliberately issues on non-trivial pushes.
+
+The change is small, targeted, and directly derived from reading the Git C sources for `probe_rpc` / `large_request` / `read_head_info`. No behavior change for small requests or when MaxPushBlobSize is active.
