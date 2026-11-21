@@ -59,6 +59,27 @@ type ComboMarkdownEditorOptions = {
   easyMDEOptions?: Omit<EasyMDE.Options, 'toolbar'> & {toolbar?: ReadonlyArray<string>},
 };
 
+// Options that can't be expressed as data-* attributes (e.g. functions) live here,
+// selected by the container's "data-editor-preset" attribute.
+const editorPresets: Record<string, ComboMarkdownEditorOptions> = {
+  wiki: {
+    // EasyMDE has some problems of height definition, it has inline style height 300px by default, so we also use inline styles to override it.
+    // And another benefit is that we only need to write the style once for both editors.
+    // TODO: Move height style to CSS after EasyMDE removal.
+    editorHeights: {minHeight: '300px', height: 'calc(100vh - 600px)'},
+    easyMDEOptions: {
+      previewRender: (_content, previewTarget) => previewTarget.innerHTML, // disable builtin preview render
+      toolbar: ['bold', 'italic', 'strikethrough', '|',
+        'heading-1', 'heading-2', 'heading-3', 'heading-bigger', 'heading-smaller', '|',
+        'gitea-code-inline', 'code', 'quote', '|', 'gitea-checkbox-empty', 'gitea-checkbox-checked', '|',
+        'unordered-list', 'ordered-list', '|',
+        'link', 'image', 'table', 'horizontal-rule', '|',
+        'preview', 'fullscreen', 'side-by-side', '|', 'gitea-switch-to-textarea',
+      ],
+    },
+  },
+};
+
 type ComboMarkdownEditorTextarea = HTMLTextAreaElement & {_giteaComboMarkdownEditor: ComboMarkdownEditor};
 type ComboMarkdownEditorContainer = HTMLElement & {_giteaComboMarkdownEditor?: ComboMarkdownEditor};
 
@@ -94,10 +115,12 @@ export class ComboMarkdownEditor {
 
   previewFetch: ExclusiveFetch = new ExclusiveFetch();
 
-  constructor(container: ComboMarkdownEditorContainer, options:ComboMarkdownEditorOptions = {}) {
+  constructor(container: ComboMarkdownEditorContainer) {
     if (container._giteaComboMarkdownEditor) throw new Error('ComboMarkdownEditor already initialized');
     container._giteaComboMarkdownEditor = this;
-    this.options = options;
+    const preset = container.getAttribute('data-editor-preset');
+    if (preset && !editorPresets[preset]) throw new Error(`Unknown ComboMarkdownEditor preset: ${preset}`);
+    this.options = preset ? editorPresets[preset] : {};
     this.container = container;
   }
 
@@ -464,11 +487,11 @@ export function getComboMarkdownEditor(el: Element | null): ComboMarkdownEditor 
   return (el as ComboMarkdownEditorContainer)._giteaComboMarkdownEditor ?? null;
 }
 
-export async function initComboMarkdownEditor(container: HTMLElement, options:ComboMarkdownEditorOptions = {}) {
+export async function initComboMarkdownEditor(container: HTMLElement) {
   if (!container) {
     throw new Error('initComboMarkdownEditor: container is null');
   }
-  const editor = new ComboMarkdownEditor(container, options);
+  const editor = new ComboMarkdownEditor(container);
   await editor.init();
   return editor;
 }
