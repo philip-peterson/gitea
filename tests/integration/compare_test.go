@@ -298,6 +298,22 @@ Hello from 2
 	})
 }
 
+func TestCompareAlreadyMergedBranch(t *testing.T) {
+	onGiteaRun(t, func(t *testing.T, _ *url.URL) {
+		session := loginUser(t, "user2")
+
+		// "already-merged" stays behind while master moves ahead, so it is a strict ancestor of master, not equal to it
+		testCreateBranch(t, session, "user2", "repo1", "branch/master", "already-merged", http.StatusSeeOther)
+		testEditFile(t, session, "user2", "repo1", "master", "README.md", "master moved ahead")
+
+		req := NewRequest(t, "GET", "/user2/repo1/compare/master...already-merged")
+		resp := session.MakeRequest(t, req, http.StatusOK)
+		text := NewHTMLParser(t, resp.Body).doc.Text()
+		assert.Contains(t, text, translation.NewLocale("en-US").TrString("repo.pulls.nothing_to_compare_and_allow_empty_pr"))
+		assert.NotContains(t, text, "These branches are equal")
+	})
+}
+
 func TestCompareCodeExpand(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		user1 := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1})
