@@ -18,6 +18,8 @@ export function initGlobalEnterQuickSubmit() {
 }
 
 export function initGlobalComboMarkdownEditor() {
+  // Pages that need the editor instance can also call initComboMarkdownEditor on the same container:
+  // the initialization is shared, so it doesn't matter which one runs first.
   registerGlobalInitFunc('initComboMarkdownEditor', async (el) => {
     await initComboMarkdownEditor(el);
   });

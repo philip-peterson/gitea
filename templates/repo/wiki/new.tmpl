@@ -22,7 +22,6 @@
 				{{$content = ctx.Locale.Tr "repo.wiki.welcome"}}
 			{{end}}
 			{{template "shared/combomarkdowneditor" (dict
-				"CustomInit" true
 				"EditorPreset" "wiki"
 				"MarkdownEditorContext" (ctx.MiscUtils.MarkdownEditorWiki $.Repository)
 				"TextareaName" "content"

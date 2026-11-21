@@ -13,7 +13,6 @@
 		<input type="hidden" name="diff_base_cid">
 		<div class="field">
 		{{template "shared/combomarkdowneditor" (dict
-			"CustomInit" true
 			"MarkdownEditorContext" (ctx.MiscUtils.MarkdownEditorComment $root.Repository)
 			"TextareaName" "content"
 			"TextareaPlaceholder" (ctx.Locale.Tr "repo.diff.comment.placeholder")
