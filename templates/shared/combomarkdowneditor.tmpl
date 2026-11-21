@@ -3,6 +3,7 @@
 * ContainerId: id attribute for the container element
 * ContainerClasses: additional classes for the container element
 * MarkdownEditorContext: the context data for the editor, see backend MarkdownEditorContext
+* EditorPreset: name of a JS-side options preset (see editorPresets in ComboMarkdownEditor.ts), eg: wiki
 * TextareaName: name attribute for the textarea
 * TextareaContent: content for the textarea
 * TextareaMaxLength: maxlength attribute for the textarea
@@ -26,6 +27,7 @@
 		data-preview-url="{{$previewLink}}"
 		data-preview-context="{{$previewContext}}"
 		{{if $mentionsLink}}data-mentions-url="{{$mentionsLink}}"{{end}}
+		{{if .EditorPreset}}data-editor-preset="{{.EditorPreset}}"{{end}}
 >
 	{{if ne $previewMode "none"}}
 	<div class="ui top tabular menu">
