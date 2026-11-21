@@ -8,7 +8,6 @@
 
 	{{if $useMarkdownEditor}}
 		{{template "shared/combomarkdowneditor" (dict
-			"CustomInit" true
 			"ContainerClasses" "tw-hidden"
 			"MarkdownEditorContext" (ctx.MiscUtils.MarkdownEditorComment $root.Repository)
 			"TextareaContent" .item.Attributes.value

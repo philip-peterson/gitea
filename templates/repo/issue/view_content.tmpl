@@ -155,7 +155,6 @@
 	<form class="ui form comment">
 		<div class="field">
 			{{template "shared/combomarkdowneditor" (dict
-				"CustomInit" true
 				"MarkdownEditorContext" (ctx.MiscUtils.MarkdownEditorComment $.Repository)
 				"TextareaName" "content"
 				"DropzoneParentContainer" ".ui.form"
