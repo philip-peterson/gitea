@@ -78,7 +78,7 @@
 		</text-expander>
 		<script nonce="{{ctx.CspScriptNonce}}">
 			if (window.localUserSettings.getBoolean('markdown-editor-monospace')) {
-				document.querySelector('.markdown-text-editor').classList.add('tw-font-mono');
+				document.currentScript.parentElement.querySelector('.markdown-text-editor').classList.add('tw-font-mono');
 			}
 		</script>
 	</div>
