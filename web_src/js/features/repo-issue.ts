@@ -10,7 +10,7 @@ import {
   toggleElem, toggleElemClass,
 } from '../utils/dom.ts';
 import {setFileFolding} from './file-fold.ts';
-import {ComboMarkdownEditor, getComboMarkdownEditor, initComboMarkdownEditor} from './comp/ComboMarkdownEditor.ts';
+import {ComboMarkdownEditor, initComboMarkdownEditor} from './comp/ComboMarkdownEditor.ts';
 import {GET, POST} from '../modules/fetch.ts';
 import {showErrorToast} from '../modules/toast.ts';
 import {fomanticQuery} from '../modules/fomantic/base.ts';
@@ -185,11 +185,10 @@ export function initRepoIssueCommentTargetHashReset() {
 
 export async function handleCommentReply(el: HTMLElement) {
   const form = el.closest('.comment-code-cloud')!.querySelector('.comment-form')!;
-  const textarea = form.querySelector('textarea');
 
   hideElem(el);
   showElem(form);
-  const editor = getComboMarkdownEditor(textarea) ?? await initComboMarkdownEditor(form.querySelector('.combo-markdown-editor')!);
+  const editor = await initComboMarkdownEditor(form.querySelector('.combo-markdown-editor')!);
   editor.focus();
   return editor;
 }
